@@ -8,19 +8,20 @@ import { User } from '../entities/user.entity';
 @Injectable()
 export class HackatimeService {
   private readonly logger = new Logger(HackatimeService.name);
-  private readonly clientId: string;
-  private readonly clientSecret: string;
+  private readonly clientId: string | undefined;
+  private readonly clientSecret: string | undefined;
   private readonly redirectUri: string;
   private readonly jwtSecret: string;
   private readonly baseUrl: string;
+  private readonly configured: boolean;
 
   constructor(
     private configService: ConfigService,
     @InjectRepository(User)
     private userRepo: Repository<User>,
   ) {
-    this.clientId = this.configService.getOrThrow('HACKATIME_CLIENT_ID');
-    this.clientSecret = this.configService.getOrThrow('HACKATIME_CLIENT_SECRET');
+    this.clientId = this.configService.get('HACKATIME_CLIENT_ID');
+    this.clientSecret = this.configService.get('HACKATIME_CLIENT_SECRET');
     this.redirectUri = this.configService.get(
       'HACKATIME_REDIRECT_URI',
       'http://localhost:5173/auth/hackatime/callback',
@@ -30,6 +31,16 @@ export class HackatimeService {
       'HACKATIME_BASE_URL',
       'https://hackatime.hackclub.com',
     );
+    this.configured = !!(this.clientId && this.clientSecret);
+    if (!this.configured) {
+      this.logger.warn('HACKATIME_CLIENT_ID/SECRET not set — Hackatime OAuth disabled');
+    }
+  }
+
+  private assertConfigured(): void {
+    if (!this.configured) {
+      throw new Error('Hackatime OAuth is not configured');
+    }
   }
 
   private signState(state: string): string {
@@ -40,12 +51,14 @@ export class HackatimeService {
   }
 
   startAuth(): { url: string; state: string } {
+    this.assertConfigured();
+
     const state = crypto.randomUUID();
     const signature = this.signState(state);
     const signedState = `${state}.${signature}`;
 
     const params = new URLSearchParams({
-      client_id: this.clientId,
+      client_id: this.clientId!,
       redirect_uri: this.redirectUri,
       response_type: 'code',
       scope: 'profile read',
@@ -64,6 +77,8 @@ export class HackatimeService {
     cookieState: string,
     userId: string,
   ): Promise<{ success: boolean; redirectTo: string }> {
+    this.assertConfigured();
+
     // 1. Verify state (same HMAC pattern as HCA OAuth)
     const dotIndex = returnedSignedState.lastIndexOf('.');
     if (dotIndex === -1) {
@@ -100,8 +115,8 @@ export class HackatimeService {
         grant_type: 'authorization_code',
         code,
         redirect_uri: this.redirectUri,
-        client_id: this.clientId,
-        client_secret: this.clientSecret,
+        client_id: this.clientId!,
+        client_secret: this.clientSecret!,
       }),
     });
 
