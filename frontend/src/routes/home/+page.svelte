@@ -546,7 +546,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
+    gap: 16px;
     text-decoration: none;
     margin-top: auto;
     padding: 12px 0;
@@ -558,13 +558,14 @@
   }
 
   .sticker-img {
-    width: 80px;
+    width: 150px;
     height: auto;
+    border-radius: 16px;
   }
 
   .sticker-text {
     font-family: "Stone Breaker", "Courier New", monospace;
-    font-size: 16px;
+    font-size: 22px;
     color: #cbc1ae;
     letter-spacing: 0.04em;
   }
