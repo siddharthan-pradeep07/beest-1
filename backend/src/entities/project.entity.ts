@@ -43,22 +43,22 @@ export class Project {
   @Column({ name: 'project_type', length: 20 })
   projectType: string;
 
-  @Column({ name: 'code_url', length: 2048, nullable: true })
+  @Column({ type: 'varchar', name: 'code_url', length: 2048, nullable: true })
   codeUrl: string | null;
 
-  @Column({ name: 'readme_url', length: 2048, nullable: true })
+  @Column({ type: 'varchar', name: 'readme_url', length: 2048, nullable: true })
   readmeUrl: string | null;
 
-  @Column({ name: 'demo_url', length: 2048, nullable: true })
+  @Column({ type: 'varchar', name: 'demo_url', length: 2048, nullable: true })
   demoUrl: string | null;
 
-  @Column({ name: 'screenshot_1_url', length: 2048, nullable: true })
+  @Column({ type: 'varchar', name: 'screenshot_1_url', length: 2048, nullable: true })
   screenshot1Url: string | null;
 
-  @Column({ name: 'screenshot_2_url', length: 2048, nullable: true })
+  @Column({ type: 'varchar', name: 'screenshot_2_url', length: 2048, nullable: true })
   screenshot2Url: string | null;
 
-  @Column({ name: 'hackatime_project_name', length: 255, nullable: true })
+  @Column({ type: 'varchar', name: 'hackatime_project_name', length: 255, nullable: true })
   hackatimeProjectName: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
