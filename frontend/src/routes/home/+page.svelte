@@ -130,7 +130,7 @@
 
         <div class="projects-empty">
           <p class="empty-text">No projects yet. Start building to earn hours!</p>
-          <a href="/tutorial" class="action-btn">Create a Project</a>
+          <button class="action-btn" onclick={() => navigate('projects')}>Create a Project</button>
         </div>
 
         <div class="bottom-row">

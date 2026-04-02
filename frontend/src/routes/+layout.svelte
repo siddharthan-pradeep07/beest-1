@@ -5,6 +5,7 @@
 </script>
 
 <svelte:head>
+	<title>Beest</title>
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
