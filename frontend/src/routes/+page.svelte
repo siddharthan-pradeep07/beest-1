@@ -67,9 +67,9 @@
   const vh = $derived(typeof window !== 'undefined' ? window.innerHeight : 800);
   const annotate = $derived(Math.min(Math.max((scrollY - diagramTop + vh * 0.75) / (vh * 0.8), 0), 1));
 
-  const showA = $derived(annotate > 0.1);
-  const showB = $derived(annotate > 0.4);
-  const showC = $derived(annotate > 0.7);
+  const showA = $derived(annotate > 0);
+  const showB = $derived(annotate > 0.25);
+  const showC = $derived(annotate > 0.45);
 
   const subtitleEN = 'Code a project, Fly to the Netherlands, Build a mechanical animal!';
   const subtitleNL = 'Programmeer een project, kom naar Scheveningen, bouw een mechanisch dier!';
@@ -187,27 +187,35 @@
   </div>
   <div class="hero-parallax" bind:clientHeight={heroHeight}>
     {#each [
-      { src: '/images/beest/1.webp', x: 0, rot: 0, scale: 0, drift: 0 },
-      { src: '/images/beest/2.webp', x: 0, rot: 0.006, scale: 0.0003, drift: 0.02, offsetY: -60 },
-      { src: '/images/beest/3.webp', x: 0, rot: 0, scale: 0, drift: 0.04 },
-      { src: '/images/beest/4.webp', x: 0, rot: 0, scale: 0, drift: 0.06 },
-      { src: '/images/beest/5.webp', x: 0, rot: 0, scale: 0, drift: 0.08 },
-      { src: '/images/beest/6.webp', x: 0.06, rot: 0, scale: 0, drift: 0.10 },
-      { src: '/images/beest/7.webp', x: 0.06, rot: 0, scale: 0, drift: 0.04, stretchX: 0.00015 },
-      { src: '/images/beest/8.webp', x: 0, rot: 0, scale: 0, drift: 0.08 },
-      { src: '/images/beest/9.webp', x: 0, rot: 0, scale: 0, drift: 0.08 },
-      { src: '/images/beest/10.webp', x: 0, rot: 0, scale: 0, drift: 0.16 },
-      { src: '/images/beest/11.webp', x: 0, rot: 0, scale: 0, drift: 0.20 },
+      { src: '', x: 0, rot: 0, scale: 0, drift: 0, isBg: true },
+      { src: '/images/beest-cropped/2.webp', x: 0, rot: 0.006, scale: 0.0003, drift: 0.02, offsetY: -60 },
+      { src: '/images/beest-cropped/3.webp', x: 0, rot: 0, scale: 0, drift: 0.04, crop: { left: 0, top: 53.5926, width: 100, height: 46.4074 } },
+      { src: '/images/beest-cropped/4.webp', x: 0, rot: 0, scale: 0, drift: 0.06, crop: { left: 0, top: 64.6667, width: 44.5625, height: 21.9259 } },
+      { src: '/images/beest-cropped/5.webp', x: 0, rot: 0, scale: 0, drift: 0.08, crop: { left: 13.7708, top: 67.2222, width: 86.2292, height: 32.7778 } },
+      { src: '/images/beest-cropped/6.webp', x: 0.06, rot: 0, scale: 0, drift: 0.10 },
+      { src: '/images/beest-cropped/7.webp', x: 0.06, rot: 0, scale: 0, drift: 0.04, stretchX: 0.00015, crop: { left: 0, top: 57.5556, width: 89.5625, height: 42.4444 } },
+      { src: '/images/beest-cropped/8.webp', x: 0, rot: 0, scale: 0, drift: 0.08, crop: { left: 3.625, top: 79.1852, width: 25, height: 10.0741 } },
+      { src: '/images/beest-cropped/9.webp', x: 0, rot: 0, scale: 0, drift: 0.08, crop: { left: 10.1667, top: 60.4444, width: 88.4375, height: 36.2593 } },
+      { src: '/images/beest-cropped/10.webp', x: 0, rot: 0, scale: 0, drift: 0.16, crop: { left: 37.3333, top: 46.8519, width: 62.6667, height: 53.1481 } },
+      { src: '/images/beest-cropped/11.webp', x: 0, rot: 0, scale: 0, drift: 0.20, crop: { left: 65.625, top: 72.0741, width: 34.375, height: 27.9259 } },
     ] as layer, i}
-      <img
-        src={layer.src}
-        alt=""
-        class="hero-layer"
-        style="z-index: {i}; transform-origin: top center; transform: translateX({pxRemaining * layer.x}px) translateY({(layer.offsetY ?? 0) - postScroll * layer.drift}px) rotate({pxRemaining * layer.rot}deg) scale({1 + pxRemaining * layer.scale}) scaleX({1 + pxRemaining * (layer.stretchX ?? 0)}) scaleY({heroHeight ? (heroHeight + postScroll * layer.drift) / heroHeight : 1});"
-        fetchpriority={i === 0 ? 'high' : 'auto'}
-        loading={i <= 2 ? 'eager' : 'lazy'}
-        decoding="async"
-      />
+      {#if layer.isBg}
+        <div
+          class="hero-layer hero-layer-bg"
+          style="z-index: {i};"
+        ></div>
+      {:else}
+        <img
+          src={layer.src}
+          alt=""
+          class="hero-layer"
+          class:hero-layer-cropped={!!layer.crop}
+          style="z-index: {i}; transform-origin: top center; {layer.crop ? `left: ${layer.crop.left}%; top: ${layer.crop.top}%; width: ${layer.crop.width}%; height: ${layer.crop.height}%;` : ''} transform: translateX({pxRemaining * layer.x}px) translateY({(layer.offsetY ?? 0) - postScroll * layer.drift}px) rotate({pxRemaining * layer.rot}deg) scale({1 + pxRemaining * layer.scale}) scaleX({1 + pxRemaining * (layer.stretchX ?? 0)}) scaleY({heroHeight ? layer.crop ? 1 + (postScroll * layer.drift) / (heroHeight * layer.crop.height / 100) : (heroHeight + postScroll * layer.drift) / heroHeight : 1});"
+          fetchpriority={i === 0 ? 'high' : 'auto'}
+          loading={i <= 2 ? 'eager' : 'lazy'}
+          decoding="async"
+        />
+      {/if}
     {/each}
     <svg class="hero-strata" viewBox="0 0 1440 80" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <polygon points="0,38 60,35 120,40 180,32 240,28 300,25 340,30 380,26 440,22 500,26 560,30 620,24 680,28 720,35 780,40 840,44 880,40 940,46 1000,50 1060,46 1100,42 1140,48 1200,52 1260,48 1300,44 1340,50 1400,46 1440,42 1440,80 0,80" fill="#4b4840" />
@@ -683,6 +691,13 @@
     object-fit: cover;
     will-change: transform;
     pointer-events: none;
+  }
+  .hero-layer-cropped {
+    inset: auto;
+    object-fit: fill;
+  }
+  .hero-layer-bg {
+    background: linear-gradient(to bottom, #8aadc8 0%, #99b7cf 25%, #a9c3d8 50%, #b0c9dc 75%);
   }
 
   .hero-overlay {
