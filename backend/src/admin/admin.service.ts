@@ -360,6 +360,11 @@ export class AdminService {
         : `Project "${project.name}" received feedback`;
     await this.auditLogService.log(project.userId, 'project_reviewed', label);
 
+    // 6. Sync approval date to Airtable for Loops
+    if (status === 'approved' && project.user?.email) {
+      this.rsvpService.updateDateField(project.user.email, 'beestApprovedProject');
+    }
+
     return { success: true };
   }
 

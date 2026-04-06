@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { Project, VALID_PROJECT_TYPES } from '../entities/project.entity';
 import { Comment } from '../entities/comment.entity';
 import { Submission } from '../entities/submission.entity';
+import { User } from '../entities/user.entity';
 import { fetchWithTimeout } from '../fetch.util';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { HackatimeService } from '../hackatime/hackatime.service';
@@ -46,6 +47,8 @@ export class ProjectsService {
     private commentRepo: Repository<Comment>,
     @InjectRepository(Submission)
     private submissionRepo: Repository<Submission>,
+    @InjectRepository(User)
+    private userRepo: Repository<User>,
   ) {
     this.cdnApiKey = this.configService.getOrThrow('CDN_API_KEY');
   }
@@ -384,6 +387,11 @@ export class ProjectsService {
         `Submitted "${project.name}" for review`,
         impersonatorName,
       );
+
+      // Sync submission date to Airtable for Loops
+      this.userRepo.findOne({ where: { id: userId }, select: ['email'] }).then((u) => {
+        if (u?.email) this.rsvpService.updateDateField(u.email, 'beestShippedProject');
+      });
     } else if (dto.status === 'unshipped') {
       await this.auditLogService.log(
         userId,

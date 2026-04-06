@@ -180,6 +180,50 @@ export class RsvpService {
     return permsMap;
   }
 
+  /**
+   * Sets a date field in Airtable for Loops sync, only if not already set.
+   * Fire-and-forget — logs errors but never throws.
+   */
+  async updateDateField(rawEmail: string, fieldName: string): Promise<void> {
+    try {
+      const email = this.sanitizeEmail(rawEmail);
+      const searchParams = new URLSearchParams({
+        filterByFormula: `{Email} = "${this.escapeAirtableValue(email)}"`,
+        maxRecords: '1',
+      });
+      searchParams.append('fields[]', fieldName);
+
+      const lookupRes = await fetchWithTimeout(`${this.baseUrl}?${searchParams}`, {
+        headers: { Authorization: `Bearer ${this.airtableApiKey}` },
+      });
+      if (!lookupRes.ok) return;
+
+      const data = await lookupRes.json();
+      const record = data.records?.[0];
+      if (!record) return;
+
+      // Skip if the field already has a value
+      if (record.fields?.[fieldName]) return;
+
+      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      const res = await fetchWithTimeout(`${this.baseUrl}/${record.id}`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${this.airtableApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ fields: { [fieldName]: today } }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.error(`Airtable updateDateField(${fieldName}) error:`, res.status, text);
+      }
+    } catch (err) {
+      console.error(`Airtable updateDateField(${fieldName}) failed:`, err);
+    }
+  }
+
   async getStickerLink(rawEmail: string): Promise<string | null> {
     const email = this.sanitizeEmail(rawEmail);
     const searchParams = new URLSearchParams({

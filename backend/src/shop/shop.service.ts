@@ -12,6 +12,7 @@ import { Order } from '../entities/order.entity';
 import { FulfillmentUpdate } from '../entities/fulfillment-update.entity';
 import { User } from '../entities/user.entity';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { RsvpService } from '../rsvp/rsvp.service';
 
 @Injectable()
 export class ShopService {
@@ -28,6 +29,7 @@ export class ShopService {
     private readonly userRepo: Repository<User>,
     private readonly dataSource: DataSource,
     private readonly auditLogService: AuditLogService,
+    private readonly rsvpService: RsvpService,
   ) {}
 
   async listActive() {
@@ -134,6 +136,12 @@ export class ShopService {
         'shop_purchase',
         `Purchased ${result.quantity}x ${result.itemName} for ${result.pipesSpent} Pipes`,
       );
+
+      // Sync purchase date to Airtable for Loops
+      this.userRepo.findOne({ where: { id: userId }, select: ['email'] }).then((u) => {
+        if (u?.email) this.rsvpService.updateDateField(u.email, 'beestPurchasedItem');
+      });
+
       return result;
     });
   }
@@ -277,6 +285,12 @@ export class ShopService {
         'order_fulfilled',
         `Order for ${order.quantity}x ${order.itemName} was fulfilled`,
       );
+
+      // Sync fulfillment date to Airtable for Loops
+      this.userRepo.findOne({ where: { id: order.userId }, select: ['email'] }).then((u) => {
+        if (u?.email) this.rsvpService.updateDateField(u.email, 'beestFulfilledOrder');
+      });
+
       return { success: true };
     });
   }

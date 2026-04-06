@@ -60,11 +60,24 @@ export class OnboardingController {
       slack = 'error';
     }
 
-    return {
-      hackatime: await this.hackatimeService.isConnected(user.sub),
-      slack,
-      project: await this.projectsService.userHasProjects(user.uid),
-    };
+    const [hackatime, project] = await Promise.all([
+      this.hackatimeService.isConnected(user.sub),
+      this.projectsService.userHasProjects(user.uid),
+    ]);
+
+    // Sync tutorial completion date to Airtable for Loops
+    const slackDone = slack === 'full_member';
+    if (hackatime && slackDone && project) {
+      const dbUserForSync = await this.userRepo.findOne({
+        where: { hcaSub: user.sub },
+        select: ['email'],
+      });
+      if (dbUserForSync?.email) {
+        this.rsvpService.updateDateField(dbUserForSync.email, 'beestCompletedTutorial');
+      }
+    }
+
+    return { hackatime, slack, project };
   }
 
   @Throttle({ default: { limit: 10, ttl: 60000 } })

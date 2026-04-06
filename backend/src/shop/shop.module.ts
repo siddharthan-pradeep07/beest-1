@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { AuditLogModule } from '../audit-log/audit-log.module';
+import { RsvpModule } from '../rsvp/rsvp.module';
 import { ShopItem } from '../entities/shop-item.entity';
 import { Order } from '../entities/order.entity';
 import { FulfillmentUpdate } from '../entities/fulfillment-update.entity';
@@ -14,6 +15,7 @@ import { ShopService } from './shop.service';
     TypeOrmModule.forFeature([ShopItem, Order, FulfillmentUpdate, User]),
     AuthModule,
     AuditLogModule,
+    RsvpModule,
   ],
   controllers: [ShopController],
   providers: [ShopService],
