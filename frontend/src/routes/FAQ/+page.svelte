@@ -130,7 +130,6 @@
     margin: 0;
     padding: 0;
     background-color: #4b4840;
-    filter: saturate(1.5);
     overflow-x: hidden;
   }
 
