@@ -139,7 +139,7 @@ export class ShopService {
 
       // Sync purchase date to Airtable for Loops
       this.userRepo.findOne({ where: { id: userId }, select: ['email'] }).then((u) => {
-        if (u?.email) this.rsvpService.updateDateField(u.email, 'loops - beestPurchasedItem');
+        if (u?.email) this.rsvpService.updateDateField(u.email, 'Loops - beestPurchasedItem');
       });
 
       return result;
@@ -288,7 +288,7 @@ export class ShopService {
 
       // Sync fulfillment date to Airtable for Loops
       this.userRepo.findOne({ where: { id: order.userId }, select: ['email'] }).then((u) => {
-        if (u?.email) this.rsvpService.updateDateField(u.email, 'loops - beestFulfilledOrder');
+        if (u?.email) this.rsvpService.updateDateField(u.email, 'Loops - beestFulfilledOrder');
       });
 
       return { success: true };

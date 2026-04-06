@@ -73,7 +73,7 @@ export class OnboardingController {
         select: ['email'],
       });
       if (dbUserForSync?.email) {
-        this.rsvpService.updateDateField(dbUserForSync.email, 'loops - beestCompletedTutorial');
+        this.rsvpService.updateDateField(dbUserForSync.email, 'Loops - beestCompletedTutorial');
       }
     }
 

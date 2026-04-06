@@ -362,7 +362,7 @@ export class AdminService {
 
     // 6. Sync approval date to Airtable for Loops
     if (status === 'approved' && project.user?.email) {
-      this.rsvpService.updateDateField(project.user.email, 'loops - beestApprovedProject');
+      this.rsvpService.updateDateField(project.user.email, 'Loops - beestApprovedProject');
     }
 
     return { success: true };

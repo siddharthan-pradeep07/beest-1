@@ -390,7 +390,7 @@ export class ProjectsService {
 
       // Sync submission date to Airtable for Loops
       this.userRepo.findOne({ where: { id: userId }, select: ['email'] }).then((u) => {
-        if (u?.email) this.rsvpService.updateDateField(u.email, 'loops - beestShippedProject');
+        if (u?.email) this.rsvpService.updateDateField(u.email, 'Loops - beestShippedProject');
       });
     } else if (dto.status === 'unshipped') {
       await this.auditLogService.log(
