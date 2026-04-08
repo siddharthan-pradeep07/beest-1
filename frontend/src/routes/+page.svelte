@@ -446,10 +446,11 @@
   <div class="info-block">
     <h2>I can't make it :/</h2>
     <p>
-      You can still win! Alongside the event you can get prizes for logging hours. We will have a shop
-      packed with rewards like laptops, tablets, headphones and merch. These will be delivered straight
-      to you and require no money transfer! Everything is earned just by working on a project. You can
-      see some of the prize selection here ↓
+      You can still win! Alongside the event you can get prizes for logging hours. Every hour you code
+      earns you 1 Pipe, and you spend Pipes in the shop on rewards like laptops,
+      tablets, headphones and merch. These will be delivered straight to you and require no money
+      transfer! Everything is earned just by working on a project. You can see some of the prize
+      selection here ↓
     </p>
   </div>
 </section>
@@ -464,6 +465,7 @@
 
 <div class="carousel-section" aria-label="Shop carousel preview">
   <h2 class="carousel-title">Earn Prizes!</h2>
+  <p class="carousel-subtitle">1 hour coded = 1 Pipe. Spend Pipes in the shop.</p>
 
   <div class="shop-carousel-bg">
     <div class="carousel-belt-bg">
@@ -1402,6 +1404,19 @@
     font-size: clamp(32px, 4vw, 56px);
     letter-spacing: 0.04em;
     text-transform: uppercase;
+  }
+
+  .carousel-subtitle {
+    position: absolute;
+    left: 55%;
+    top: 18%;
+    transform: translate(-50%, -50%) rotate(-12deg);
+    z-index: 3;
+    margin: 0;
+    color: #ddd7cf;
+    font-family: "Courier New", monospace;
+    font-size: clamp(14px, 1.6vw, 20px);
+    letter-spacing: 0.03em;
   }
 
   .shop-carousel,

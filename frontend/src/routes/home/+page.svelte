@@ -2273,10 +2273,12 @@
   .bottom-row {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-rows: 1fr;
     gap: 28px;
     margin-top: 24px;
     flex: 1;
     min-height: 0;
+    overflow: hidden;
   }
 
   .action-log,
@@ -2288,6 +2290,7 @@
     border-radius: 8px;
     background: rgba(0, 0, 0, 0.15);
     min-height: 0;
+    max-height: 100%;
     overflow: hidden;
   }
 
@@ -3889,6 +3892,7 @@
     justify-content: start;
     max-height: none;
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
   }
