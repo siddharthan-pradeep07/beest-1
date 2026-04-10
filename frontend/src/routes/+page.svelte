@@ -466,7 +466,7 @@
 
 <div class="carousel-section" aria-label="Shop carousel preview">
   <h2 class="carousel-title">Earn Prizes!</h2>
-  <p class="carousel-subtitle">1 hour coded = 1 Pipe. Spend Pipes in the shop.</p>
+  
 
   <div class="shop-carousel-bg">
     <div class="carousel-belt-bg">
@@ -919,7 +919,7 @@
   .sticker-cta {
     position: relative;
     display: flex;
-    align-items: flex-start;
+    align-items: stretch;
     justify-content: center;
     gap: 48px;
     padding: 240px 48px 64px;
@@ -934,7 +934,6 @@
     background: rgba(0, 0, 0, 0.25);
     border: 1px solid rgba(230, 244, 254, 0.15);
     padding: 24px 24px 24px 36px;
-    margin-bottom: 48px;
   }
 
   .cta-sticker {
@@ -1088,11 +1087,11 @@
   }
 
   .info-section {
-    max-width: 1196px;
+    max-width: 1100px;
     margin: 0 auto;
-    padding: 48px 48px 72px;
+    padding: 72px 64px 96px;
     display: flex;
-    gap: 48px;
+    gap: 72px;
   }
 
   .info-block {
@@ -1102,7 +1101,7 @@
   }
 
   .info-block h2 {
-    margin: 0 0 16px;
+    margin: 0 0 24px;
     color: #ddd7cf;
     font-family: "Stone Breaker", "Courier New", monospace;
     font-size: clamp(22px, 2.4vw, 34px);
@@ -1147,7 +1146,6 @@
   .rsvp-box {
     position: relative;
     flex: 0 0 380px;
-    align-self: flex-start;
     box-sizing: border-box;
     min-height: 420px;
     padding: 24px;
@@ -1335,56 +1333,57 @@
   }
 
   .c1 {
-    left: 61%;
+    left: 55%;
     top: 7%;
   }
 
   .c1::before {
-    width: calc(61cqi - 49cqi - 100%);
-    right: 100%;
+    left: calc(-1 * (55cqi - 24.5cqi));
+    width: calc(55cqi - 24.5cqi);
     top: 18px;
     background: linear-gradient(90deg, #93b4cd, #e6f4fe);
   }
 
   .c1::after {
     height: 70px;
-    right: calc(100% + 61cqi - 49cqi - 100%);
+    left: calc(-1 * (55cqi - 24.5cqi));
     top: 18px;
     background: linear-gradient(180deg, #93b4cd, rgba(147, 180, 205, 0));
   }
 
   .c2 {
-    left: 65%;
+    left: 58%;
     top: 43%;
   }
 
   .c2::before {
-    width: calc(65cqi - 49cqi - 100%);
-    right: 100%;
+    left: calc(-1 * (58cqi - 49cqi));
+    width: calc(58cqi - 49cqi);
     top: 20px;
   }
 
   .c3 {
-    left: 61%;
+    left: 55%;
     top: 76%;
   }
 
   .c3::before {
-    width: calc(61cqi - 49cqi - 100%);
-    right: 100%;
+    left: calc(-1 * (55cqi - 24.5cqi));
+    width: calc(55cqi - 24.5cqi);
     top: 19px;
     background: linear-gradient(90deg, #93b4cd, #e6f4fe);
   }
 
   .c3::after {
     height: 70px;
-    right: calc(100% + 61cqi - 49cqi - 100%);
+    left: calc(-1 * (55cqi - 24.5cqi));
     bottom: calc(100% - 20px);
     background: linear-gradient(180deg, rgba(147, 180, 205, 0), #93b4cd);
   }
 
   .carousel-section {
     position: relative;
+    z-index: 2;
     overflow-x: clip;
     overflow-y: visible;
     padding: 100px 0 100px;
@@ -1521,10 +1520,8 @@
     .pipe { display: none; }
 
     .sticker-cta {
-      flex-direction: column;
-      align-items: center;
       gap: 32px;
-      padding: 100px 20px 60px;
+      padding: 160px 24px 60px;
     }
 
     .hero-overlay {
@@ -1557,23 +1554,18 @@
     }
 
     .cta-group {
-      align-self: center;
-      width: min(90vw, 700px);
       box-sizing: border-box;
       padding: 28px 32px;
     }
 
     .rsvp-box {
-      flex: 0 1 auto;
-      align-self: center;
-      max-width: 420px;
-      width: 100%;
+      flex: 0 0 340px;
     }
 
     .info-section {
       flex-direction: column;
-      gap: 24px;
-      padding: 24px 20px 40px;
+      gap: 56px;
+      padding: 60px 48px 72px;
     }
 
     .carousel-section {
@@ -1608,6 +1600,26 @@
 
     .card-caption {
       font-size: 11px;
+    }
+  }
+
+  @media (max-width: 1050px) {
+    .sticker-cta {
+      flex-direction: column;
+      align-items: center;
+      padding: 100px 20px 60px;
+    }
+
+    .cta-group {
+      align-self: center;
+      width: min(90vw, 700px);
+    }
+
+    .rsvp-box {
+      flex: 0 1 auto;
+      align-self: center;
+      max-width: 420px;
+      width: 100%;
     }
   }
 
