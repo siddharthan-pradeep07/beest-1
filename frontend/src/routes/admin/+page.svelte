@@ -172,15 +172,13 @@
 		if (overrideJustification !== '' && overrideJustification !== lastAutoJustification) {
 			return;
 		}
-		const trustLabels: Record<string, string> = { blue: 'standard', yellow: 'warned', red: 'banned' };
-		const trustLabel = trustLabels[hackatimeData.trustLevel?.toLowerCase() ?? ''] ?? hackatimeData.trustLevel ?? 'unknown';
 		const proj = allProjects.find(p => p.id === expandedProjectId);
 		const updateNote = proj?.isUpdate ? ' (this is an update to an existing project)' : '';
 		const htNames = (hackatimeData.hackatimeProjects ?? []).map(p => p.name).join(', ');
 		const htNamesNote = htNames ? `\nHackatime projects: ${htNames}` : '';
 		const prevHours = hackatimeData.previousApprovedHours ?? 0;
 		const deltaNote = prevHours > 0 ? `\nPreviously approved: ${prevHours}h — delta: ${Math.round((adjustedHours - prevHours) * 10) / 10}h` : '';
-		const next = `the user has trust level ${trustLabel} and tracked ${hackatimeData.totalHours} hours on the project through hackatime (${label} to ${adjustedHours}h)${updateNote}${htNamesNote}${deltaNote}\n\nsigned off by ${data.user.name ?? 'unknown'}`;
+		const next = `the user tracked ${hackatimeData.totalHours} hours on the project through hackatime (${label} to ${adjustedHours}h)${updateNote}${htNamesNote}${deltaNote}\n\nsigned off by ${data.user.name ?? 'unknown'}`;
 		overrideJustification = next;
 		lastAutoJustification = next;
 	}
@@ -200,8 +198,6 @@
 	}
 
 	function buildInitialJustification(proj: ProjectSummary) {
-		const trustLabels: Record<string, string> = { blue: 'standard', yellow: 'warned', red: 'banned' };
-		const trustLabel = trustLabels[hackatimeData?.trustLevel?.toLowerCase() ?? ''] ?? hackatimeData?.trustLevel ?? 'unknown';
 		const updateNote = proj.isUpdate ? ' (this is an update to an existing project)' : '';
 		const unifiedNote = !hackatimeData?.unifiedDuplicate && !hackatimeData?.unifiedError && proj.codeUrl
 			? `\nAs of ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })} this is the first submission of this code URL to unified.`
@@ -210,7 +206,7 @@
 		const htNamesNote = htNames ? `\nHackatime projects: ${htNames}` : '';
 		const prevHours = hackatimeData?.previousApprovedHours ?? 0;
 		const deltaNote = prevHours > 0 ? `\nPreviously approved: ${prevHours}h — delta: ${Math.round((customHours - prevHours) * 10) / 10}h` : '';
-		const next = `the user has trust level ${trustLabel} and tracked ${hackatimeData?.totalHours ?? 0} hours on the project through hackatime${updateNote}${htNamesNote}${deltaNote}${unifiedNote}\n\nsigned off by ${data.user.name ?? 'unknown'}`;
+		const next = `the user tracked ${hackatimeData?.totalHours ?? 0} hours on the project through hackatime${updateNote}${htNamesNote}${deltaNote}${unifiedNote}\n\nsigned off by ${data.user.name ?? 'unknown'}`;
 		overrideJustification = next;
 		lastAutoJustification = next;
 	}
