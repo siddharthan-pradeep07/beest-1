@@ -126,6 +126,13 @@ export class ProjectsService {
       impersonatorName,
     );
 
+    // Sync DetailedProject funnel stage when a Hackatime project is linked
+    if (hackatimeProjectName.length > 0) {
+      this.userRepo.findOne({ where: { id: userId }, select: ['email'] }).then((u) => {
+        if (u?.email) this.rsvpService.updateDateField(u.email, 'Loops - beestDetailedProject');
+      });
+    }
+
     // Strip internal fields before returning to frontend
     const { userId: _uid, user: _user, ...safe } = saved;
     return safe;
@@ -343,6 +350,13 @@ export class ProjectsService {
           validated.push(cleaned);
         }
         project.hackatimeProjectName = validated;
+
+        // Sync DetailedProject funnel stage when a Hackatime project is linked
+        if (validated.length > 0) {
+          this.userRepo.findOne({ where: { id: userId }, select: ['email'] }).then((u) => {
+            if (u?.email) this.rsvpService.updateDateField(u.email, 'Loops - beestDetailedProject');
+          });
+        }
       }
     }
     if (dto.isUpdate !== undefined) {

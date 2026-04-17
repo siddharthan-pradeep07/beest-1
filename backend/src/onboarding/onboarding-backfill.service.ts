@@ -47,13 +47,28 @@ export class OnboardingBackfillService implements OnModuleInit {
       `Backfill targets: ${hackatimeUsers.length} hackatime-synched, ${onboardedUsers.length} onboarded`,
     );
 
+    // Users who have projects with linked Hackatime project names
+    const detailedProjectUsers = await this.projectRepo
+      .createQueryBuilder('p')
+      .innerJoin('p.user', 'u')
+      .where('p.hackatime_project_name IS NOT NULL')
+      .andWhere("p.hackatime_project_name != '[]'")
+      .select('DISTINCT u.email', 'email')
+      .getRawMany();
+
     for (const u of hackatimeUsers) {
       if (u.email) await this.rsvpService.updateDateField(u.email, 'Loops - beestHackatimeSynched');
     }
     for (const u of onboardedUsers) {
       await this.rsvpService.updateDateField(u.email, 'Loops - beestOnboarded');
     }
+    for (const row of detailedProjectUsers) {
+      if (row.email) await this.rsvpService.updateDateField(row.email, 'Loops - beestDetailedProject');
+    }
 
+    this.logger.log(
+      `Backfill targets: ${detailedProjectUsers.length} detailed-project`,
+    );
     this.logger.log('Onboarding funnel backfill complete. Unset ONBOARDING_BACKFILL to skip on next boot.');
   }
 }
