@@ -312,7 +312,16 @@ export class AdminService {
     }
     await this.projectRepo.save(project);
 
-    // 2. Grant pipes as delta on this submission
+    // 2a. Claw back pipes if revoking a previously-approved project
+    if (status === 'changes_needed' && (project.pipesGranted ?? 0) > 0) {
+      const clawback = project.pipesGranted!;
+      await this.userRepo.decrement({ id: project.userId }, 'pipes', clawback);
+      project.pipesGranted = 0;
+      await this.projectRepo.save(project);
+      this.logger.warn(`Clawed back ${clawback} pipes from user ${project.userId} for project ${project.id}`);
+    }
+
+    // 2b. Grant pipes as delta on this submission
     //    Pipes granted = overrideHours for THIS submission minus what was already granted on previous submissions.
     //    The project's pipesGranted tracks the cumulative total.
     if (status === 'approved' && project.overrideHours != null && project.overrideHours > 0) {

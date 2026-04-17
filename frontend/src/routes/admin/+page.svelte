@@ -245,7 +245,7 @@
 
 		const proj = allProjects.find(p => p.id === projectId);
 		loadReviews(projectId);
-		if (proj?.status === 'unreviewed') {
+		if (proj?.status === 'unreviewed' || proj?.status === 'approved') {
 			hackatimeLoading = true;
 			try {
 				const res = await fetch(`/api/admin/projects/${projectId}/hackatime`);
@@ -1293,7 +1293,7 @@
 									{/if}
 								{/if}
 
-								{#if selectedProject.status === 'unreviewed'}
+								{#if selectedProject.status === 'unreviewed' || selectedProject.status === 'approved'}
 									<hr class="proj-divider" />
 
 									{#if hackatimeLoading}
