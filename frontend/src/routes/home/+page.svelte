@@ -83,7 +83,7 @@
   let stickerLink = $state<string | null>(null);
 
   // Shop state
-  type ShopItemType = { id: string; name: string; description: string; imageUrl: string; priceHours: number; stock: number | null; sortOrder: number; estimatedShip: string | null };
+  type ShopItemType = { id: string; name: string; description: string; detailedDescription: string | null; imageUrl: string; priceHours: number; stock: number | null; sortOrder: number; estimatedShip: string | null };
   let shopItems = $state<ShopItemType[]>([]);
   let shopLoading = $state(false);
   let shopLoaded = $state(false);
@@ -1538,6 +1538,9 @@
           <div class="shop-modal-details">
             <h2 class="shop-modal-name">{selectedShopItem.name}</h2>
             <p class="shop-modal-desc">{selectedShopItem.description}</p>
+            {#if selectedShopItem.detailedDescription}
+              <p class="shop-modal-detailed-desc">{selectedShopItem.detailedDescription}</p>
+            {/if}
 
             <div class="shop-modal-price-row">
               <span class="shop-modal-price">{selectedShopItem.priceHours} Pipes</span>
@@ -3707,6 +3710,15 @@
     font-size: 16px;
     color: #1a1a1a;
     line-height: 1.5;
+  }
+
+  .shop-modal-detailed-desc {
+    margin: 8px 0 0;
+    font-family: "Sunny Mood", "Courier New", monospace;
+    font-size: 14px;
+    color: #4b4840;
+    line-height: 1.5;
+    white-space: pre-line;
   }
 
   .shop-modal-price-row {

@@ -32,6 +32,9 @@ export class ShopItem {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
+  @Column({ name: 'detailed_description', type: 'text', nullable: true, default: null })
+  detailedDescription: string | null;
+
   @Column({ name: 'estimated_ship', type: 'varchar', length: 200, nullable: true, default: null })
   estimatedShip: string | null;
 

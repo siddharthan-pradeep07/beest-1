@@ -806,6 +806,7 @@ export class AdminService {
   async createShopItem(data: {
     name: string;
     description: string;
+    detailedDescription?: string | null;
     imageUrl: string;
     priceHours: number;
     stock?: number | null;
@@ -821,6 +822,7 @@ export class AdminService {
     const item = this.shopRepo.create({
       name: data.name,
       description: data.description,
+      detailedDescription: data.detailedDescription ?? null,
       imageUrl: data.imageUrl,
       priceHours: data.priceHours,
       stock: data.stock ?? null,
@@ -834,6 +836,7 @@ export class AdminService {
   async updateShopItem(id: string, data: {
     name?: string;
     description?: string;
+    detailedDescription?: string | null;
     imageUrl?: string;
     priceHours?: number;
     stock?: number | null;
@@ -844,6 +847,7 @@ export class AdminService {
     if (!item) throw new NotFoundException('Shop item not found');
     if (data.name !== undefined) item.name = data.name;
     if (data.description !== undefined) item.description = data.description;
+    if (data.detailedDescription !== undefined) item.detailedDescription = data.detailedDescription;
     if (data.imageUrl !== undefined) item.imageUrl = data.imageUrl;
     if (data.priceHours !== undefined) item.priceHours = data.priceHours;
     if (data.stock !== undefined) item.stock = data.stock;

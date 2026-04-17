@@ -205,6 +205,7 @@ export class AdminController {
   async createShopItem(@Body() body: {
     name?: string;
     description?: string;
+    detailedDescription?: string | null;
     imageUrl?: string;
     priceHours?: number;
     stock?: number | null;
@@ -225,6 +226,7 @@ export class AdminController {
     return this.adminService.createShopItem({
       name: body.name,
       description: body.description,
+      detailedDescription: body.detailedDescription,
       imageUrl: body.imageUrl,
       priceHours: body.priceHours,
       stock: body.stock,
@@ -255,6 +257,7 @@ export class AdminController {
     @Body() body: {
       name?: string;
       description?: string;
+      detailedDescription?: string | null;
       imageUrl?: string;
       priceHours?: number;
       stock?: number | null;

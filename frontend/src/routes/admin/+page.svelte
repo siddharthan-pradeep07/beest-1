@@ -477,6 +477,7 @@
 		id: string;
 		name: string;
 		description: string;
+		detailedDescription: string | null;
 		imageUrl: string;
 		priceHours: number;
 		stock: number | null;
@@ -490,6 +491,7 @@
 	let editingShop: ShopItemAdmin | null = $state(null);
 	let newShopName = $state('');
 	let newShopDesc = $state('');
+	let newShopDetailedDesc = $state('');
 	let newShopImage = $state('');
 	let newShopPrice = $state(0);
 	let newShopStock = $state('');
@@ -518,6 +520,7 @@
 				body: JSON.stringify({
 					name: newShopName,
 					description: newShopDesc,
+					detailedDescription: newShopDetailedDesc.trim() || null,
 					imageUrl: newShopImage,
 					priceHours: newShopPrice,
 					stock: newShopStock.trim() === '' ? null : parseInt(newShopStock),
@@ -528,6 +531,7 @@
 			if (res.ok) {
 				newShopName = '';
 				newShopDesc = '';
+				newShopDetailedDesc = '';
 				newShopImage = '';
 				newShopPrice = 0;
 				newShopStock = '';
@@ -550,6 +554,7 @@
 				body: JSON.stringify({
 					name: editingShop.name,
 					description: editingShop.description,
+					detailedDescription: editingShop.detailedDescription,
 					imageUrl: editingShop.imageUrl,
 					priceHours: editingShop.priceHours,
 					stock: editingShop.stock,
@@ -1053,7 +1058,8 @@
 					<div class="shop-form-grid">
 						<input type="text" placeholder="Name" bind:value={newShopName} class="shop-input" />
 						<input type="text" placeholder="Image URL (e.g. /images/shop/item.webp)" bind:value={newShopImage} class="shop-input" />
-						<textarea placeholder="Description" bind:value={newShopDesc} class="shop-input shop-textarea" rows="2"></textarea>
+						<textarea placeholder="Description (shown on card)" bind:value={newShopDesc} class="shop-input shop-textarea" rows="2"></textarea>
+						<textarea placeholder="Detailed description (shown in popup only)" bind:value={newShopDetailedDesc} class="shop-input shop-textarea" rows="3"></textarea>
 						<div class="shop-form-row">
 							<label class="shop-field">
 								<span>Price (hours)</span>
@@ -1104,7 +1110,8 @@
 									<div class="shop-item-edit">
 										<input type="text" bind:value={editingShop.name} class="shop-input" />
 										<input type="text" bind:value={editingShop.imageUrl} class="shop-input" placeholder="Image URL" />
-										<textarea bind:value={editingShop.description} class="shop-input shop-textarea" rows="2"></textarea>
+										<textarea bind:value={editingShop.description} class="shop-input shop-textarea" rows="2" placeholder="Description (shown on card)"></textarea>
+									<textarea bind:value={editingShop.detailedDescription} class="shop-input shop-textarea" rows="3" placeholder="Detailed description (shown in popup only)"></textarea>
 										<div class="shop-form-row">
 											<label class="shop-field">
 												<span>Price (h)</span>
