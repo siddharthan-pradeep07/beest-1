@@ -3499,8 +3499,9 @@
 
   .shop-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 200px));
+    grid-template-columns: repeat(3, 1fr);
     gap: 20px;
+    justify-content: center;
   }
 
   .shop-card {
@@ -5786,7 +5787,7 @@
     }
 
     .shop-grid {
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      grid-template-columns: repeat(3, 1fr);
       gap: 14px;
     }
 
