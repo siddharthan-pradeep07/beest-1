@@ -30,7 +30,7 @@
     },
     {
       q: 'Who can participate?',
-      a: 'Any teens 13-19 or in high school can participate. We can also provide flight stipends for international students to get to the event.'
+      a: 'Any teens 13-18 or in high school can participate. We can also provide flight stipends for international students to get to the event.'
     },
     {
       q: 'How much does it cost?',
