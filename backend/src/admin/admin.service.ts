@@ -38,6 +38,10 @@ export class AdminService {
   private readonly unifiedApiKey: string | undefined;
   private readonly unifiedBaseId = 'app3A5kJwYqxMLOgh';
 
+  // DAU cache (5-minute TTL)
+  private dauCache: { count: number; timestamp: number } | null = null;
+  private readonly DAU_CACHE_TTL = 5 * 60 * 1000;
+
   constructor(
     private readonly configService: ConfigService,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
@@ -770,6 +774,65 @@ export class AdminService {
         unifiedError: true,
       };
     }
+  }
+
+  // ── Daily Active Users ──
+
+  async getDailyActiveUsers(): Promise<{ count: number }> {
+    // Return cached value if fresh
+    if (this.dauCache && Date.now() - this.dauCache.timestamp < this.DAU_CACHE_TTL) {
+      return { count: this.dauCache.count };
+    }
+
+    if (!this.hackatimeAdminKey) {
+      return { count: 0 };
+    }
+
+    // Find all users who have a hackatimeUserId AND at least one project with hackatimeProjectName linked
+    const usersWithSyncedProjects: { id: string; hackatimeUserId: string }[] =
+      await this.userRepo
+        .createQueryBuilder('u')
+        .innerJoin(Project, 'p', 'p.user_id = u.id')
+        .where('u.hackatime_user_id IS NOT NULL')
+        .andWhere('p.hackatime_project_name IS NOT NULL')
+        .select(['u.id AS id', 'u.hackatime_user_id AS "hackatimeUserId"'])
+        .distinct(true)
+        .getRawMany();
+
+    // For each user, query Hackatime to check for heartbeat activity in the last 24h
+    const oneDayAgo = Math.floor(Date.now() / 1000) - 86400;
+    let activeCount = 0;
+
+    // Process in batches of 10 to avoid overwhelming the API
+    const batchSize = 10;
+    for (let i = 0; i < usersWithSyncedProjects.length; i += batchSize) {
+      const batch = usersWithSyncedProjects.slice(i, i + batchSize);
+      const results = await Promise.allSettled(
+        batch.map(async (user) => {
+          const res = await this.hackatimeGet(
+            `/api/admin/v1/user/projects?user_id=${user.hackatimeUserId}`,
+          );
+          if (!res.ok) return false;
+          const data = await res.json();
+          const projects: { last_heartbeat?: number | string | null }[] =
+            data?.projects ?? data?.data ?? [];
+          return projects.some((p) => {
+            const lh = p.last_heartbeat;
+            if (lh == null) return false;
+            const ts = typeof lh === 'string' ? Number(lh) : lh;
+            if (!Number.isFinite(ts) || ts <= 0) return false;
+            const normalized = ts > 1e12 ? Math.floor(ts / 1000) : Math.floor(ts);
+            return normalized >= oneDayAgo;
+          });
+        }),
+      );
+      for (const r of results) {
+        if (r.status === 'fulfilled' && r.value) activeCount++;
+      }
+    }
+
+    this.dauCache = { count: activeCount, timestamp: Date.now() };
+    return { count: activeCount };
   }
 
   // ── News CRUD ──

@@ -87,6 +87,12 @@ export class AdminController {
     return this.authService.issueImpersonationToken(id, adminUid, adminName);
   }
 
+  @UseGuards(SuperAdminGuard)
+  @Get('stats/dau')
+  getDailyActiveUsers() {
+    return this.adminService.getDailyActiveUsers();
+  }
+
   // ── Projects ──
 
   @UseGuards(ReviewerGuard)

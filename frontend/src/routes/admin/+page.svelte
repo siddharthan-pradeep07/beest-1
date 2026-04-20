@@ -300,6 +300,18 @@
 	const totalUsers = $derived(users.length);
 	const totalHackatime = $derived(users.filter(u => u.hackatimeConnected).length);
 
+	// Daily Active Users
+	let dauCount = $state<number | null>(null);
+	async function loadDau() {
+		try {
+			const res = await fetch('/api/admin/stats/dau');
+			if (res.ok) {
+				const data = await res.json();
+				dauCount = data.count;
+			}
+		} catch {}
+	}
+
 	let filteredUsers = $derived.by(() => {
 		let result = users;
 		if (permsFilter) {
@@ -711,7 +723,7 @@
 			activeTab = 'projects';
 			return;
 		}
-		if (activeTab === 'users') loadUsers();
+		if (activeTab === 'users') { loadUsers(); loadDau(); }
 		if (activeTab === 'news') loadNews();
 		if (activeTab === 'projects') loadProjects();
 		if (activeTab === 'shop') loadShop();
@@ -751,6 +763,10 @@
 						<div class="stat-card">
 							<span class="stat-value">{totalHackatime}</span>
 							<span class="stat-label">Hackatime Linked</span>
+						</div>
+						<div class="stat-card">
+							<span class="stat-value">{dauCount !== null ? dauCount : '…'}</span>
+							<span class="stat-label">Daily Active Users</span>
 						</div>
 					</div>
 					<div class="users-toolbar">
