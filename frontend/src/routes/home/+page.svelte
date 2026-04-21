@@ -1132,6 +1132,7 @@
               <option value="python">Python</option>
               <option value="android">Android Playable</option>
               <option value="ios">iOS Playable</option>
+              <option value="other">Other / Not Sure</option>
             </select>
           </div>
           <div class="form-group hackatime-group">
