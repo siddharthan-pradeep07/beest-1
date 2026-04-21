@@ -398,11 +398,18 @@ export class AdminService {
     const address = identity?.address ?? {};
     const streetLines = (address.street_address ?? '').split(/\r?\n/);
 
+    const fullName = identity?.name ?? '';
+    const [splitFirst, ...splitRest] = fullName.split(' ');
+    const firstName = (identity as any)?.given_name ?? splitFirst;
+    const lastName = (identity as any)?.family_name ?? splitRest.join(' ');
+
     const screenshots = [project.screenshot1Url, project.screenshot2Url]
       .filter((url): url is string => !!url)
       .map((url) => ({ url }));
 
     const fields: Record<string, any> = {
+      'First Name': firstName,
+      'Last Name': lastName,
       'Description': project.description,
       'Email': project.user.email,
       'Playable URL': project.demoUrl,

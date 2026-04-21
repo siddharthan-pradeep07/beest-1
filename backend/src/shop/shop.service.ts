@@ -36,7 +36,7 @@ export class ShopService {
     return this.shopRepo.find({
       where: { isActive: true },
       order: { sortOrder: 'ASC' },
-      select: ['id', 'name', 'description', 'imageUrl', 'priceHours', 'stock', 'sortOrder', 'estimatedShip'],
+      select: ['id', 'name', 'description', 'detailedDescription', 'imageUrl', 'priceHours', 'stock', 'sortOrder', 'estimatedShip'],
     });
   }
 
