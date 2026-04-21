@@ -276,7 +276,7 @@
 
 	const PERMS_OPTIONS = ['User', 'Helper', 'Reviewer', 'Fraud Reviewer', 'Super Admin', 'Banned'];
 
-	const PROJECT_TYPES = ['web', 'windows', 'mac', 'linux', 'cross-platform', 'python', 'android', 'ios'];
+	const PROJECT_TYPES = ['web', 'windows', 'mac', 'linux', 'cross-platform', 'python', 'android', 'ios', 'other'];
 
 	let filteredProjects = $derived.by(() => {
 		let result = allProjects;
