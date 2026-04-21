@@ -795,25 +795,40 @@ export class AdminService {
       return { count: 0 };
     }
 
-    // Find all users who have a hackatimeUserId AND at least one project with hackatimeProjectName linked
-    const usersWithSyncedProjects: { id: string; hackatimeUserId: string }[] =
-      await this.userRepo
-        .createQueryBuilder('u')
-        .innerJoin(Project, 'p', 'p.user_id = u.id')
-        .where('u.hackatime_user_id IS NOT NULL')
-        .andWhere('p.hackatime_project_name IS NOT NULL')
-        .select(['u.id AS id', 'u.hackatime_user_id AS "hackatimeUserId"'])
-        .distinct(true)
-        .getRawMany();
+    // Find all beest projects that are linked to a hackatime project, along with their owner.
+    // Uses getMany so the hackatimeProjectName JSON transformer runs and decodes the array.
+    const linkedProjects = await this.projectRepo
+      .createQueryBuilder('p')
+      .innerJoinAndSelect('p.user', 'u')
+      .where('u.hackatime_user_id IS NOT NULL')
+      .andWhere('p.hackatime_project_name IS NOT NULL')
+      .select(['p.id', 'p.hackatimeProjectName', 'u.id', 'u.hackatimeUserId'])
+      .getMany();
 
-    // For each user, query Hackatime to check for heartbeat activity in the last 24h
+    // Group linked hackatime project names per user
+    const perUser = new Map<
+      string,
+      { hackatimeUserId: string; linkedNames: Set<string> }
+    >();
+    for (const p of linkedProjects) {
+      if (!p.user?.hackatimeUserId) continue;
+      if (!p.hackatimeProjectName || p.hackatimeProjectName.length === 0) continue;
+      let entry = perUser.get(p.user.id);
+      if (!entry) {
+        entry = { hackatimeUserId: p.user.hackatimeUserId, linkedNames: new Set() };
+        perUser.set(p.user.id, entry);
+      }
+      for (const n of p.hackatimeProjectName) entry.linkedNames.add(n);
+    }
+
+    const users = Array.from(perUser.values());
     const oneDayAgo = Math.floor(Date.now() / 1000) - 86400;
     let activeCount = 0;
 
     // Process in batches of 10 to avoid overwhelming the API
     const batchSize = 10;
-    for (let i = 0; i < usersWithSyncedProjects.length; i += batchSize) {
-      const batch = usersWithSyncedProjects.slice(i, i + batchSize);
+    for (let i = 0; i < users.length; i += batchSize) {
+      const batch = users.slice(i, i + batchSize);
       const results = await Promise.allSettled(
         batch.map(async (user) => {
           const res = await this.hackatimeGet(
@@ -821,9 +836,10 @@ export class AdminService {
           );
           if (!res.ok) return false;
           const data = await res.json();
-          const projects: { last_heartbeat?: number | string | null }[] =
+          const projects: { name?: string; last_heartbeat?: number | string | null }[] =
             data?.projects ?? data?.data ?? [];
           return projects.some((p) => {
+            if (!p.name || !user.linkedNames.has(p.name)) return false;
             const lh = p.last_heartbeat;
             if (lh == null) return false;
             const ts = typeof lh === 'string' ? Number(lh) : lh;
