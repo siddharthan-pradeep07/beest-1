@@ -206,7 +206,7 @@
     { src: '/images/shop/flight-stipend.webp', caption: 'Flight Stipend' },
     { src: '/images/shop/framework.webp', caption: 'Framework Laptop' },
     { src: '/images/shop/headphones.webp', caption: 'Headphones' },
-    { src: '/images/shop/polaroid.webp', caption: 'Polaroid Camera' },
+    { src: '/images/shop/polaroid.webp', caption: 'Instax Camera' },
     { src: '/images/shop/poster.webp', caption: 'Beest Poster' },
     { src: '/images/shop/printer.webp', caption: '3D Printer' },
     { src: '/images/shop/stickers.webp', caption: 'Sticker Pack' }
@@ -1191,6 +1191,7 @@
     color: #4b4840;
     font-size: 18px;
     font-family: inherit;
+    cursor: text;
   }
 
   .rsvp-box input[type='email']::placeholder {
