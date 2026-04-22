@@ -16,8 +16,8 @@
   import confetti from 'canvas-confetti';
 
   // Portal action: moves a node to document.body so its position:fixed
-  // escapes any ancestor containing-block (body has filter: saturate which
-  // otherwise pins fixed descendants to body, making modals drift on long pages).
+  // escapes any ancestor containing-block (.main has filter: saturate which
+  // otherwise pins fixed descendants to .main, making modals drift on long pages).
   function portal(node: HTMLElement) {
     const target = document.body;
     target.appendChild(node);
@@ -2028,7 +2028,6 @@
     display: flex;
     min-height: 100vh;
     background: #4b4840;
-    filter: saturate(1.5);
   }
 
 
@@ -2269,6 +2268,7 @@
     max-width: calc(100vw - 170px);
     display: flex;
     flex-direction: column;
+    filter: saturate(1.5);
   }
 
   /* ── sections ────────────────────────────────────── */
