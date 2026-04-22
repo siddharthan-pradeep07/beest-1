@@ -97,14 +97,19 @@ export class AdminController {
 
   @UseGuards(ReviewerGuard)
   @Get('projects')
-  listProjects() {
-    return this.adminService.listAllProjects();
+  listProjects(@Req() req: Request) {
+    const isSuperAdmin = (req as any).user?.perms === 'Super Admin';
+    return this.adminService.listAllProjects(isSuperAdmin);
   }
 
   @UseGuards(ReviewerGuard)
   @Get('projects/:id/hackatime')
-  getProjectHackatime(@Param('id', ParseUUIDPipe) id: string) {
-    return this.adminService.getProjectHackatime(id);
+  getProjectHackatime(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const isSuperAdmin = (req as any).user?.perms === 'Super Admin';
+    return this.adminService.getProjectHackatime(id, isSuperAdmin);
   }
 
   @UseGuards(ReviewerGuard)
@@ -125,7 +130,25 @@ export class AdminController {
     if (!body.status || !validStatuses.includes(body.status)) {
       throw new BadRequestException(`status must be one of: ${validStatuses.join(', ')}`);
     }
-    const reviewerId = (req as any).user?.uid;
+
+    const reviewer = (req as any).user;
+    const reviewerId = reviewer?.uid;
+    const isSuperAdmin = reviewer?.perms === 'Super Admin';
+
+    if (body.status === 'ban' && !isSuperAdmin) {
+      throw new BadRequestException('Only Super Admins can ban users. Flag this project in your internal note and ping Euan.');
+    }
+
+    const HOURS_CAP = 500;
+    for (const [field, value] of [
+      ['overrideHours', body.overrideHours] as const,
+      ['internalHours', body.internalHours] as const,
+    ]) {
+      if (value === undefined || value === null) continue;
+      if (!Number.isFinite(value) || value < 0 || value > HOURS_CAP) {
+        throw new BadRequestException(`${field} must be a finite number between 0 and ${HOURS_CAP}`);
+      }
+    }
 
     if (body.status === 'ban') {
       return this.adminService.banAndRejectProject(
@@ -156,6 +179,18 @@ export class AdminController {
   }
 
   @UseGuards(ReviewerGuard)
+  @Get('review-leaderboard')
+  getReviewLeaderboard(@Req() req: Request) {
+    const query = (req as any).query ?? {};
+    const win = (query.window as string) ?? '7d';
+    const validWindows = ['24h', '7d', '30d', 'all'];
+    if (!validWindows.includes(win)) {
+      throw new BadRequestException(`window must be one of: ${validWindows.join(', ')}`);
+    }
+    return this.adminService.getReviewLeaderboard(win as '24h' | '7d' | '30d' | 'all');
+  }
+
+  @UseGuards(SuperAdminGuard)
   @Post('projects/:id/resync-airtable')
   async resyncAirtable(
     @Param('id', ParseUUIDPipe) id: string,

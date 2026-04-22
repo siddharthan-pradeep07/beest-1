@@ -45,7 +45,7 @@ export class ReviewerGuard implements CanActivate {
       throw new ForbiddenException();
     }
 
-    request.user = user;
+    request.user = { ...user, perms };
     return true;
   }
 }

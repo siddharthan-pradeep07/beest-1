@@ -174,6 +174,9 @@ export class AdminService {
       relations: ['user'],
     });
     if (!project) throw new NotFoundException('Project not found');
+    if (project.userId === reviewerId) {
+      throw new BadRequestException('You cannot review your own project');
+    }
 
     // 1. Reject the project
     project.status = 'changes_needed';
@@ -222,7 +225,7 @@ export class AdminService {
 
   // ── Projects ──
 
-  async listAllProjects() {
+  async listAllProjects(isSuperAdmin: boolean) {
     const projects = await this.projectRepo.find({
       order: { createdAt: 'DESC' },
       relations: ['user'],
@@ -244,42 +247,44 @@ export class AdminService {
       .getMany();
     const submissionMap = new Map(latestSubmissions.map((s) => [s.projectId, s]));
 
-    const mapped = projects.map((p) => {
-      if (p.status in statusCounts) {
-        statusCounts[p.status as keyof typeof statusCounts]++;
-      }
-      const latestSub = submissionMap.get(p.id);
-      return {
-        id: p.id,
-        name: p.name,
-        description: p.description,
-        projectType: p.projectType,
-        status: p.status,
-        codeUrl: p.codeUrl,
-        demoUrl: p.demoUrl,
-        readmeUrl: p.readmeUrl,
-        screenshot1Url: p.screenshot1Url,
-        screenshot2Url: p.screenshot2Url,
-        hackatimeProjectName: p.hackatimeProjectName,
-        isUpdate: p.isUpdate,
-        otherHcProgram: p.otherHcProgram,
-        aiUse: p.aiUse,
-        createdAt: p.createdAt,
-        updatedAt: p.updatedAt,
-        user: {
-          id: p.user?.id,
-          name: p.user?.name,
-          slackId: p.user?.slackId,
-        },
-        latestSubmission: latestSub ? {
-          id: latestSub.id,
-          changeDescription: latestSub.changeDescription,
-          minHoursConfirmed: latestSub.minHoursConfirmed,
-          status: latestSub.status,
-          createdAt: latestSub.createdAt,
-        } : null,
-      };
-    });
+    const mapped = projects
+      .filter((p) => isSuperAdmin || p.status !== 'unshipped')
+      .map((p) => {
+        if (p.status in statusCounts) {
+          statusCounts[p.status as keyof typeof statusCounts]++;
+        }
+        const latestSub = submissionMap.get(p.id);
+        return {
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          projectType: p.projectType,
+          status: p.status,
+          codeUrl: p.codeUrl,
+          demoUrl: p.demoUrl,
+          readmeUrl: p.readmeUrl,
+          screenshot1Url: p.screenshot1Url,
+          screenshot2Url: p.screenshot2Url,
+          hackatimeProjectName: p.hackatimeProjectName,
+          isUpdate: p.isUpdate,
+          otherHcProgram: p.otherHcProgram,
+          aiUse: p.aiUse,
+          createdAt: p.createdAt,
+          updatedAt: p.updatedAt,
+          user: {
+            id: p.user?.id,
+            name: isSuperAdmin ? p.user?.name : null,
+            slackId: p.user?.slackId,
+          },
+          latestSubmission: latestSub ? {
+            id: latestSub.id,
+            changeDescription: latestSub.changeDescription,
+            minHoursConfirmed: latestSub.minHoursConfirmed,
+            status: latestSub.status,
+            createdAt: latestSub.createdAt,
+          } : null,
+        };
+      });
 
     return { statusCounts, projects: mapped };
   }
@@ -299,6 +304,9 @@ export class AdminService {
       relations: ['user'],
     });
     if (!project) throw new NotFoundException('Project not found');
+    if (project.userId === reviewerId) {
+      throw new BadRequestException('You cannot review your own project');
+    }
 
     // Find the latest unreviewed submission for this project
     const submission = await this.submissionRepo.findOne({
@@ -479,6 +487,51 @@ export class AdminService {
     return { success: true };
   }
 
+  async getReviewLeaderboard(window: '24h' | '7d' | '30d' | 'all') {
+    const windowMs: Record<typeof window, number | null> = {
+      '24h': 24 * 60 * 60 * 1000,
+      '7d': 7 * 24 * 60 * 60 * 1000,
+      '30d': 30 * 24 * 60 * 60 * 1000,
+      'all': null,
+    };
+    const ms = windowMs[window];
+
+    const qb = this.reviewRepo
+      .createQueryBuilder('r')
+      .leftJoin('r.reviewer', 'u')
+      .select('r.reviewer_id', 'reviewerId')
+      .addSelect('u.name', 'reviewerName')
+      .addSelect('u.slack_id', 'reviewerSlackId')
+      .addSelect('COUNT(*)::int', 'total')
+      .addSelect("COUNT(*) FILTER (WHERE r.status = 'approved')::int", 'approved')
+      .addSelect("COUNT(*) FILTER (WHERE r.status = 'changes_needed')::int", 'changesNeeded')
+      .addSelect("COUNT(*) FILTER (WHERE r.status = 'ban')::int", 'banned')
+      .groupBy('r.reviewer_id')
+      .addGroupBy('u.name')
+      .addGroupBy('u.slack_id')
+      .orderBy('total', 'DESC');
+
+    if (ms !== null) {
+      qb.where('r.created_at > :cutoff', { cutoff: new Date(Date.now() - ms) });
+    }
+
+    const rows = await qb.getRawMany();
+    return rows.map((r) => {
+      const total = Number(r.total);
+      const approved = Number(r.approved);
+      return {
+        reviewerId: r.reviewerId,
+        reviewerName: r.reviewerName,
+        reviewerSlackId: r.reviewerSlackId,
+        total,
+        approved,
+        changesNeeded: Number(r.changesNeeded),
+        banned: Number(r.banned),
+        approvalPercent: total > 0 ? Math.round((approved / total) * 100) : 0,
+      };
+    });
+  }
+
   async getProjectReviews(projectId: string, includeInternal: boolean) {
     const reviews = await this.reviewRepo.find({
       where: { projectId },
@@ -558,7 +611,7 @@ export class AdminService {
 
   // ── Hackatime admin lookup ──
 
-  private emptyHackatimeResult(projectId: string, user: User | null) {
+  private emptyHackatimeResult(projectId: string, user: User | null, isSuperAdmin: boolean) {
     return {
       projectId,
       hackatimeProjects: [],
@@ -569,7 +622,7 @@ export class AdminService {
       linkedBanned: false,
       linkedEmail: null,
       linkedSlackUid: null,
-      beestEmail: user?.email ?? null,
+      beestEmail: isSuperAdmin ? (user?.email ?? null) : null,
       beestSlackId: user?.slackId ?? null,
       emailMismatch: false,
       unifiedDuplicate: false,
@@ -594,7 +647,7 @@ export class AdminService {
     });
   }
 
-  async getProjectHackatime(projectId: string) {
+  async getProjectHackatime(projectId: string, isSuperAdmin: boolean) {
     if (!this.hackatimeAdminKey) {
       throw new BadRequestException('Hackatime admin API key not configured');
     }
@@ -608,7 +661,7 @@ export class AdminService {
     const hackatimeNames: string[] = project.hackatimeProjectName ?? [];
     const user = project.user;
     if (!user) {
-      return this.emptyHackatimeResult(projectId, user);
+      return this.emptyHackatimeResult(projectId, user, isSuperAdmin);
     }
 
     try {
@@ -650,7 +703,7 @@ export class AdminService {
         }
       }
       if (!hackatimeUserId) {
-        return this.emptyHackatimeResult(projectId, user);
+        return this.emptyHackatimeResult(projectId, user, isSuperAdmin);
       }
 
       // 2. Get user info (trust level), projects, and Unified duplicate check in parallel
@@ -753,9 +806,9 @@ export class AdminService {
         previousApprovedHours,
         trustLevel,
         linkedBanned,
-        linkedEmail,
+        linkedEmail: isSuperAdmin ? linkedEmail : null,
         linkedSlackUid,
-        beestEmail: user.email ?? null,
+        beestEmail: isSuperAdmin ? (user.email ?? null) : null,
         beestSlackId: user.slackId ?? null,
         emailMismatch,
         unifiedDuplicate: unifiedResult.duplicate,

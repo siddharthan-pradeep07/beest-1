@@ -31,6 +31,7 @@
 	}
 
 	const isReviewer = $derived(data.role === 'Reviewer' || data.role === 'Fraud Reviewer');
+	const isSuperAdmin = $derived(data.role === 'Super Admin');
 	let activeTab = $state('users');
 	let users: UserSummary[] = $state([]);
 	let loading = $state(true);
@@ -83,7 +84,7 @@
 	let allProjects: ProjectSummary[] = $state([]);
 	let statusCounts: StatusCounts = $state({ unshipped: 0, unreviewed: 0, changes_needed: 0, approved: 0 });
 	let projectsLoading = $state(false);
-	let projectStatusFilter = $state('');
+	let projectStatusFilter = $state(data.role === 'Super Admin' ? '' : 'unreviewed');
 	let projectTypeFilter = $state('');
 	let projectSearch = $state('');
 
@@ -484,6 +485,38 @@
 		}
 	}
 
+	// Review leaderboard state
+	interface LeaderboardRow {
+		reviewerId: string;
+		reviewerName: string | null;
+		reviewerSlackId: string | null;
+		total: number;
+		approved: number;
+		changesNeeded: number;
+		banned: number;
+		approvalPercent: number;
+	}
+	let leaderboardRows: LeaderboardRow[] = $state([]);
+	let leaderboardLoading = $state(false);
+	let leaderboardWindow = $state<'24h' | '7d' | '30d' | 'all'>('7d');
+
+	$effect(() => {
+		void leaderboardWindow;
+		if (activeTab === 'leaderboard') loadLeaderboard();
+	});
+
+	async function loadLeaderboard() {
+		leaderboardLoading = true;
+		try {
+			const res = await fetch(`/api/admin/review-leaderboard?window=${leaderboardWindow}`);
+			if (res.ok) {
+				leaderboardRows = await res.json();
+			}
+		} finally {
+			leaderboardLoading = false;
+		}
+	}
+
 	// Shop state
 	interface ShopItemAdmin {
 		id: string;
@@ -728,6 +761,7 @@
 		if (activeTab === 'projects') loadProjects();
 		if (activeTab === 'shop') loadShop();
 		if (activeTab === 'fulfillment') loadFulfillment();
+		if (activeTab === 'leaderboard') loadLeaderboard();
 	});
 </script>
 
@@ -748,6 +782,7 @@
 			<button class="tab" class:active={activeTab === 'fulfillment'} onclick={() => activeTab = 'fulfillment'}>Fulfillment</button>
 		{/if}
 		<button class="tab" class:active={activeTab === 'projects'} onclick={() => activeTab = 'projects'}>Projects</button>
+		<button class="tab" class:active={activeTab === 'leaderboard'} onclick={() => activeTab = 'leaderboard'}>Leaderboard</button>
 		<a href="/home" class="tab tab-home">Home</a>
 	</nav>
 
@@ -1174,13 +1209,15 @@
 		{:else if activeTab === 'projects'}
 			<div class="projects-admin">
 				<div class="status-pills">
-					<button class="pill" class:active={projectStatusFilter === ''} onclick={() => projectStatusFilter = ''}>
-						All <span class="pill-count">{statusCounts.unshipped + statusCounts.unreviewed + statusCounts.changes_needed + statusCounts.approved}</span>
-					</button>
-					<button class="pill pill-unshipped" class:active={projectStatusFilter === 'unshipped'} onclick={() => projectStatusFilter = projectStatusFilter === 'unshipped' ? '' : 'unshipped'}>
-						Unshipped <span class="pill-count">{statusCounts.unshipped}</span>
-					</button>
-					<button class="pill pill-unreviewed" class:active={projectStatusFilter === 'unreviewed'} onclick={() => projectStatusFilter = projectStatusFilter === 'unreviewed' ? '' : 'unreviewed'}>
+					{#if isSuperAdmin}
+						<button class="pill" class:active={projectStatusFilter === ''} onclick={() => projectStatusFilter = ''}>
+							All <span class="pill-count">{statusCounts.unshipped + statusCounts.unreviewed + statusCounts.changes_needed + statusCounts.approved}</span>
+						</button>
+						<button class="pill pill-unshipped" class:active={projectStatusFilter === 'unshipped'} onclick={() => projectStatusFilter = projectStatusFilter === 'unshipped' ? '' : 'unshipped'}>
+							Unshipped <span class="pill-count">{statusCounts.unshipped}</span>
+						</button>
+					{/if}
+					<button class="pill pill-unreviewed" class:active={projectStatusFilter === 'unreviewed'} onclick={() => projectStatusFilter = projectStatusFilter === 'unreviewed' && isSuperAdmin ? '' : 'unreviewed'}>
 						Unreviewed <span class="pill-count">{statusCounts.unreviewed}</span>
 					</button>
 					<button class="pill pill-changes_needed" class:active={projectStatusFilter === 'changes_needed'} onclick={() => projectStatusFilter = projectStatusFilter === 'changes_needed' ? '' : 'changes_needed'}>
@@ -1222,7 +1259,7 @@
 											{/if}
 										</span>
 										<span class="proj-sidebar-meta">
-											{project.user.name ?? '—'}
+											{isSuperAdmin ? (project.user.name ?? '—') : (project.user.slackId ?? '—')}
 											<span class="badge badge-{project.status} badge-sm">{project.status}</span>
 										</span>
 									</button>
@@ -1243,7 +1280,7 @@
 
 										<div class="proj-main-meta">
 											<span>Type: <strong>{selectedProject.projectType}</strong></span>
-											<span>User: <strong>{selectedProject.user.name ?? '—'}</strong>{selectedProject.user.slackId ? ` (${selectedProject.user.slackId})` : ''}</span>
+											<span>User: <strong>{isSuperAdmin ? (selectedProject.user.name ?? '—') : (selectedProject.user.slackId ?? '—')}</strong>{isSuperAdmin && selectedProject.user.slackId ? ` (${selectedProject.user.slackId})` : ''}</span>
 											<span>Update: <strong>{selectedProject.isUpdate ? 'Yes' : 'No'}</strong></span>
 											<span>Created: <strong>{formatDate(selectedProject.createdAt)}</strong></span>
 										</div>
@@ -1340,15 +1377,19 @@
 											{#if hackatimeData.linkedBanned || hackatimeData.emailMismatch || hackatimeData.trustLevel === 'red'}
 												<div class="ht-ownership-alert">
 													{#if hackatimeData.emailMismatch}
-														<div><strong>⚠ Hackatime account mismatch.</strong> The linked Hackatime user does not contain this builder's email — strongly suggests a shared/alt account.</div>
+														<div><strong>⚠ Hackatime account mismatch.</strong> {isSuperAdmin ? "The linked Hackatime user does not contain this builder's email — strongly suggests a shared/alt account." : 'The linked Hackatime account does not match this builder — strongly suggests a shared/alt account.'}</div>
 													{/if}
 													{#if hackatimeData.linkedBanned || hackatimeData.trustLevel === 'red'}
 														<div><strong>⚠ Linked Hackatime account is banned</strong> (trust: {hackatimeData.trustLevel ?? 'unknown'}{hackatimeData.linkedBanned ? ', banned=true' : ''}).</div>
 													{/if}
 													<div class="ht-ownership-meta">
-														<div>Beest email: <code>{hackatimeData.beestEmail ?? '—'}</code></div>
+														{#if isSuperAdmin}
+															<div>Beest email: <code>{hackatimeData.beestEmail ?? '—'}</code></div>
+														{/if}
 														<div>Beest Slack: <code>{hackatimeData.beestSlackId ?? '—'}</code></div>
-														<div>Linked Hackatime email: <code>{hackatimeData.linkedEmail ?? '—'}</code></div>
+														{#if isSuperAdmin}
+															<div>Linked Hackatime email: <code>{hackatimeData.linkedEmail ?? '—'}</code></div>
+														{/if}
 														<div>Linked Hackatime Slack: <code>{hackatimeData.linkedSlackUid ?? '—'}</code></div>
 													</div>
 												</div>
@@ -1421,7 +1462,7 @@
 									<div class="review-actions">
 										<button class="review-btn review-btn-approve" onclick={() => reviewProject('approved')} disabled={reviewSubmitting}>Approve</button>
 										<button class="review-btn review-btn-reject" onclick={() => reviewProject('changes_needed')} disabled={reviewSubmitting || !userFeedback.trim()}>Reject</button>
-										<button class="review-btn review-btn-ban" onclick={() => { if (confirm('Ban this user and reject their project?')) reviewProject('ban'); }} disabled={reviewSubmitting}>Fail &amp; Ban</button>
+										<button class="review-btn review-btn-ban" onclick={() => { if (confirm('Ban this user and reject their project?')) reviewProject('ban'); }} disabled={reviewSubmitting || !isSuperAdmin} title={!isSuperAdmin ? 'Ban is Super Admin only — flag in internal note and ping Euan' : ''}>Fail &amp; Ban</button>
 									</div>
 								{/if}
 
@@ -1460,7 +1501,7 @@
 								{#if selectedProject.status === 'approved'}
 									<hr class="proj-divider" />
 									<div class="review-actions">
-										<button class="review-btn review-btn-resync" onclick={resyncAirtable} disabled={resyncLoading}>
+										<button class="review-btn review-btn-resync" onclick={resyncAirtable} disabled={resyncLoading || !isSuperAdmin} title={!isSuperAdmin ? 'Re-push is Super Admin only' : ''}>
 											{resyncLoading ? 'Pushing...' : 'Re-push to Airtable'}
 										</button>
 									</div>
@@ -1472,6 +1513,48 @@
 							{/if}
 						</div>
 					</div>
+				{/if}
+			</div>
+		{:else if activeTab === 'leaderboard'}
+			<div class="leaderboard">
+				<div class="leaderboard-header">
+					<h2>Review Leaderboard</h2>
+					<div class="leaderboard-windows">
+						<button class="pill" class:active={leaderboardWindow === '24h'} onclick={() => leaderboardWindow = '24h'}>24h</button>
+						<button class="pill" class:active={leaderboardWindow === '7d'} onclick={() => leaderboardWindow = '7d'}>7 days</button>
+						<button class="pill" class:active={leaderboardWindow === '30d'} onclick={() => leaderboardWindow = '30d'}>30 days</button>
+						<button class="pill" class:active={leaderboardWindow === 'all'} onclick={() => leaderboardWindow = 'all'}>All time</button>
+					</div>
+				</div>
+				{#if leaderboardLoading}
+					<p class="loading">Loading leaderboard...</p>
+				{:else if leaderboardRows.length === 0}
+					<p class="empty">No reviews in this window.</p>
+				{:else}
+					<table class="leaderboard-table">
+						<thead>
+							<tr>
+								<th>Reviewer</th>
+								<th>Total</th>
+								<th>Approved</th>
+								<th>Changes Needed</th>
+								<th>Banned</th>
+								<th>Approval %</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each leaderboardRows as row}
+								<tr>
+									<td>{row.reviewerName ?? row.reviewerSlackId ?? row.reviewerId}</td>
+									<td>{row.total}</td>
+									<td>{row.approved}</td>
+									<td>{row.changesNeeded}</td>
+									<td>{row.banned}</td>
+									<td>{row.approvalPercent}%</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
 				{/if}
 			</div>
 		{/if}
@@ -2477,6 +2560,65 @@
 
 	.review-btn-resync {
 		background: #3a6a9a;
+	}
+
+	.leaderboard {
+		padding: 0.5rem 0;
+	}
+
+	.leaderboard-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 1rem;
+		flex-wrap: wrap;
+		gap: 1rem;
+	}
+
+	.leaderboard-header h2 {
+		margin: 0;
+		font-size: 1.2rem;
+		color: #eee;
+	}
+
+	.leaderboard-windows {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	.leaderboard-table {
+		width: 100%;
+		border-collapse: collapse;
+		background: #1e1e1e;
+		border: 1px solid #444;
+		border-radius: 6px;
+		overflow: hidden;
+	}
+
+	.leaderboard-table th,
+	.leaderboard-table td {
+		padding: 0.6rem 0.9rem;
+		text-align: left;
+		border-bottom: 1px solid #333;
+		color: #ddd;
+		font-size: 0.9rem;
+	}
+
+	.leaderboard-table th {
+		background: #252525;
+		font-weight: 600;
+		color: #ccc;
+		text-transform: uppercase;
+		font-size: 0.75rem;
+		letter-spacing: 0.04em;
+	}
+
+	.leaderboard-table tbody tr:last-child td {
+		border-bottom: none;
+	}
+
+	.leaderboard-table tbody tr:hover {
+		background: #252525;
 	}
 
 	.reviews-heading {
