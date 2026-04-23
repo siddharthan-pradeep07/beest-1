@@ -4,6 +4,12 @@ dist
 # Local dev database
 docker-compose.dev.yml
 
+# DB dumps 
+backups/
+*.dmp
+*.dump
+*.sql.gz
+
 # Env
 .env
 .env.*
