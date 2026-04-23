@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Axis, Chart, Highlight, Points, Spline, Svg, Tooltip } from 'layerchart';
+	import { LineChart } from 'layerchart';
 	import { scaleUtc } from 'd3-scale';
 	import { utcFormat } from 'd3-time-format';
 
@@ -16,13 +16,10 @@
 	let payload = $state<Payload | null>(null);
 	let error = $state(false);
 
-	// Combined series: historical points at UTC midnight + today's rolling-24h point.
-	// Flagged so the "today" point can be highlighted and labelled differently.
 	interface ChartPoint {
 		time: Date;
 		count: number;
 		label: string;
-		isToday: boolean;
 	}
 
 	const shortDate = utcFormat('%b %-d');
@@ -30,19 +27,17 @@
 
 	const points: ChartPoint[] = $derived.by(() => {
 		if (!payload) return [];
-		const hist: ChartPoint[] = payload.history.map((h) => ({
+		const rows: ChartPoint[] = payload.history.map((h) => ({
 			time: new Date(h.date + 'T00:00:00Z'),
 			count: h.count,
-			label: longDate(new Date(h.date + 'T00:00:00Z')),
-			isToday: false
+			label: longDate(new Date(h.date + 'T00:00:00Z'))
 		}));
-		hist.push({
+		rows.push({
 			time: new Date(payload.today.timestamp),
 			count: payload.today.count,
-			label: 'Today (rolling 24h)',
-			isToday: true
+			label: 'Today (rolling 24h)'
 		});
-		return hist;
+		return rows;
 	});
 
 	const todayCount = $derived(payload?.today.count ?? null);
@@ -74,36 +69,44 @@
 		{:else if points.length === 0}
 			<p class="dau-msg">No data.</p>
 		{:else}
-			<Chart
+			<LineChart
 				data={points}
 				x="time"
-				y="count"
 				xScale={scaleUtc()}
 				yDomain={[0, null]}
-				yNice
-				padding={{ top: 12, bottom: 28, left: 36, right: 12 }}
-				tooltip={{ mode: 'bisect-x' }}
-			>
-				<Svg>
-					<Axis
-						placement="left"
-						grid={{ class: 'dau-grid' }}
-						rule
-						ticks={4}
-						format={(v: number) => String(v)}
-					/>
-					<Axis placement="bottom" rule ticks={6} format={(v: Date) => shortDate(v)} />
-					<Spline class="dau-line" />
-					<Points class="dau-dot" r={3} />
-					<Highlight points lines />
-					<Tooltip.Root let:data>
-						<Tooltip.Header>{(data as ChartPoint).label}</Tooltip.Header>
-						<Tooltip.List>
-							<Tooltip.Item label="Active users" value={(data as ChartPoint).count} />
-						</Tooltip.List>
-					</Tooltip.Root>
-				</Svg>
-			</Chart>
+				padding={{ top: 8, bottom: 24, left: 44, right: 16 }}
+				series={[{ key: 'count', value: 'count', label: 'Active users', color: '#8bd0f7' }]}
+				points
+				props={{
+					xAxis: {
+						format: (v: Date) => shortDate(v),
+						ticks: 6,
+						tickLabelProps: { class: 'dau-tick' }
+					},
+					yAxis: {
+						format: (v: number) => String(v),
+						ticks: 4,
+						tickLabelProps: { class: 'dau-tick' }
+					},
+					grid: { class: 'dau-grid' },
+					rule: { class: 'dau-rule' },
+					spline: { class: 'dau-line' },
+					points: { class: 'dau-dot', r: 3.5 },
+					highlight: { points: { class: 'dau-dot-hover', r: 5 } },
+					tooltip: {
+						root: {
+							classes: { root: 'dau-tooltip', container: 'dau-tooltip-inner' }
+						},
+						header: {
+							format: (v: Date | string) => longDate(new Date(v as Date)),
+							classes: { root: 'dau-tooltip-header' }
+						},
+						item: {
+							classes: { root: 'dau-tooltip-item', label: 'dau-tooltip-label' }
+						}
+					}
+				}}
+			/>
 		{/if}
 	</div>
 </div>
@@ -147,7 +150,7 @@
 	}
 
 	.dau-chart {
-		height: 220px;
+		height: 240px;
 		width: 100%;
 	}
 
@@ -157,6 +160,12 @@
 		text-align: center;
 		color: #888;
 		font-size: 0.85rem;
+	}
+
+	.dau-chart :global(.dau-tick) {
+		fill: #c8c8c8 !important;
+		stroke: none !important;
+		font-size: 11px;
 	}
 
 	.dau-chart :global(.dau-line) {
@@ -171,18 +180,58 @@
 		stroke-width: 1.5;
 	}
 
-	.dau-chart :global(.dau-grid path),
-	.dau-chart :global(.dau-grid line) {
+	.dau-chart :global(.dau-dot-hover) {
+		fill: #c3e4fb;
+		stroke: #1e1e1e;
+		stroke-width: 2;
+	}
+
+	.dau-chart :global(.dau-grid) {
 		stroke: #2a2a2a;
 	}
 
-	.dau-chart :global(text) {
-		fill: #888;
-		font-size: 11px;
+	.dau-chart :global(.dau-rule) {
+		stroke: #555;
 	}
 
-	.dau-chart :global(.tick line),
-	.dau-chart :global(.rule) {
+	.dau-chart :global(.tick) {
 		stroke: #444;
+	}
+
+	/* Layerchart's Tooltip root uses Tailwind classes (absolute z-50) that
+	   aren't defined in this project, so it falls back to static positioning
+	   and breaks the layout. Re-apply the positioning it expects. */
+	.dau-chart :global(.dau-tooltip) {
+		position: absolute;
+		z-index: 50;
+		pointer-events: none;
+	}
+
+	.dau-chart :global(.dau-tooltip-inner) {
+		background: #2a2a2a;
+		color: #e0e0e0;
+		border: 1px solid #555;
+		border-radius: 6px;
+		padding: 6px 10px;
+		font-size: 12px;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+		white-space: nowrap;
+	}
+
+	.dau-chart :global(.dau-tooltip-header) {
+		font-weight: 600;
+		color: #e0e0e0;
+		margin-bottom: 2px;
+	}
+
+	.dau-chart :global(.dau-tooltip-item) {
+		display: flex;
+		justify-content: space-between;
+		gap: 0.75rem;
+		color: #c8c8c8;
+	}
+
+	.dau-chart :global(.dau-tooltip-label) {
+		color: #888;
 	}
 </style>
