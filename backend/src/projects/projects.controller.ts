@@ -65,7 +65,14 @@ export class ProjectsController {
 
       // overrideHours is the hours locked in at the last approval (user-facing, drives pipes).
       // Anything beyond that is post-approval work that hasn't been approved yet.
-      const approvedSoFar = Math.min(p.overrideHours ?? 0, currentHours);
+      // When a project is in changes_needed, any prior approval has been revoked
+      // (pipes are clawed back in admin.service.ts#reviewProject), so those hours
+      // must not count as approved — they belong to the changes_needed bucket.
+      const approvedCountsTowardApproved =
+        status === 'approved' || status === 'unreviewed';
+      const approvedSoFar = approvedCountsTowardApproved
+        ? Math.min(p.overrideHours ?? 0, currentHours)
+        : 0;
       const remainder = Math.max(0, currentHours - approvedSoFar);
 
       if (approvedSoFar > 0) {
