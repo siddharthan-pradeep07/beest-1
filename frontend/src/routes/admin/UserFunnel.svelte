@@ -20,24 +20,47 @@
 	const stages: Stage[] = $derived.by(() => {
 		if (!payload) return [];
 		return [
-			{ label: 'Signed up (RSVP)', count: payload.signedUp },
-			{ label: 'Logged in to beest', count: payload.loggedIn },
-			{ label: 'Linked Hackatime', count: payload.linkedHackatime },
-			{ label: 'Submitted a project', count: payload.submittedProject },
-			{ label: 'Got a project approved', count: payload.approvedProject }
+			{ label: 'Signed up', count: payload.signedUp },
+			{ label: 'Logged in', count: payload.loggedIn },
+			{ label: 'Hackatime synced', count: payload.linkedHackatime },
+			{ label: 'Submitted project', count: payload.submittedProject },
+			{ label: 'Approved project', count: payload.approvedProject }
 		];
 	});
 
 	const maxCount = $derived(stages.length > 0 ? Math.max(...stages.map((s) => s.count), 1) : 1);
 	const topCount = $derived(stages.length > 0 ? stages[0].count : 0);
 
-	function pct(n: number): string {
-		if (topCount === 0) return '—';
-		return `${Math.round((n / topCount) * 100)}%`;
+	// SVG uses a 100×100 viewBox per column with preserveAspectRatio=none,
+	// so it stretches to fill the column. A stage's "height" is its count
+	// expressed as a fraction of the max count, centered vertically.
+	const CHART_VB = 100;
+	const CHART_MID = CHART_VB / 2;
+
+	function stageHeight(count: number): number {
+		return maxCount === 0 ? 0 : (count / maxCount) * CHART_VB;
 	}
 
-	function width(n: number): string {
-		return `${Math.max(3, (n / maxCount) * 100)}%`;
+	function trapezoidPath(leftCount: number, rightCount: number): string {
+		const lh = stageHeight(leftCount);
+		const rh = stageHeight(rightCount);
+		const lTop = CHART_MID - lh / 2;
+		const lBot = CHART_MID + lh / 2;
+		const rTop = CHART_MID - rh / 2;
+		const rBot = CHART_MID + rh / 2;
+		return `M0,${lTop} L0,${lBot} L100,${rBot} L100,${rTop} Z`;
+	}
+
+	function pct(n: number): string {
+		if (topCount === 0) return '—';
+		return `${((n / topCount) * 100).toFixed(2)}%`;
+	}
+
+	function stageColor(i: number, total: number): string {
+		// Blue that lightens toward the narrow end.
+		const t = total <= 1 ? 0 : i / (total - 1);
+		const lightness = 55 + t * 20; // 55% → 75%
+		return `hsl(210, 60%, ${lightness}%)`;
 	}
 
 	onMount(async () => {
@@ -63,26 +86,28 @@
 	{:else if !payload}
 		<p class="funnel-msg">Loading…</p>
 	{:else}
-		<ol class="funnel-stages">
+		<div class="funnel">
 			{#each stages as stage, i}
-				{@const dropoff = i > 0 ? stages[i - 1].count - stage.count : 0}
-				<li class="funnel-stage">
-					<div class="funnel-stage-head">
-						<span class="funnel-label">{stage.label}</span>
-						<span class="funnel-nums">
-							<strong>{stage.count.toLocaleString()}</strong>
-							<span class="funnel-pct">{pct(stage.count)}</span>
-						</span>
+				{@const leftCount = i === 0 ? stage.count : stages[i - 1].count}
+				<div class="funnel-col">
+					<div class="funnel-col-label">{i + 1}. {stage.label}</div>
+					<div class="funnel-col-chart">
+						<svg class="funnel-svg" viewBox="0 0 {CHART_VB} {CHART_VB}" preserveAspectRatio="none">
+							<path d={trapezoidPath(leftCount, stage.count)} fill={stageColor(i, stages.length)} />
+						</svg>
 					</div>
-					<div class="funnel-bar-wrap">
-						<div class="funnel-bar" style="width: {width(stage.count)};"></div>
+					<div class="funnel-col-footer">
+						{#if i === 0}
+							<div class="funnel-pct">100%</div>
+							<div class="funnel-count">{stage.count.toLocaleString()} users</div>
+						{:else}
+							<div class="funnel-pct">{pct(stage.count)}</div>
+							<div class="funnel-count">{stage.count.toLocaleString()}</div>
+						{/if}
 					</div>
-					{#if i > 0 && dropoff > 0}
-						<div class="funnel-drop">−{dropoff.toLocaleString()} drop-off</div>
-					{/if}
-				</li>
+				</div>
 			{/each}
-		</ol>
+		</div>
 	{/if}
 </div>
 
@@ -113,60 +138,62 @@
 		font-size: 0.85rem;
 	}
 
-	.funnel-stages {
-		list-style: none;
-		padding: 0;
-		margin: 0;
+	.funnel {
+		display: flex;
+		width: 100%;
+		min-height: 280px;
+	}
+
+	.funnel-col {
+		flex: 1 1 0;
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		min-width: 0;
+		border-right: 1px solid #2a2a2a;
 	}
 
-	.funnel-stage {
+	.funnel-col:last-child {
+		border-right: none;
+	}
+
+	.funnel-col-label {
+		font-size: 0.78rem;
+		color: #c8c8c8;
+		padding: 0.25rem 0.5rem 0.5rem;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.funnel-col-chart {
+		position: relative;
+		flex: 1 1 auto;
+		min-height: 180px;
+	}
+
+	.funnel-svg {
+		display: block;
+		width: 100%;
+		height: 100%;
+	}
+
+	.funnel-col-footer {
+		padding: 0.5rem;
+		min-height: 2.5rem;
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
-	}
-
-	.funnel-stage-head {
-		display: flex;
-		justify-content: space-between;
-		align-items: baseline;
-		font-size: 0.85rem;
-		color: #c8c8c8;
-	}
-
-	.funnel-label {
-		color: #c8c8c8;
-	}
-
-	.funnel-nums strong {
-		color: #e0e0e0;
-		font-weight: 700;
+		align-items: flex-end;
+		gap: 0.1rem;
 	}
 
 	.funnel-pct {
-		color: #888;
-		margin-left: 0.5rem;
+		font-size: 0.85rem;
+		color: #e0e0e0;
+		font-weight: 600;
+	}
+
+	.funnel-count {
 		font-size: 0.75rem;
-	}
-
-	.funnel-bar-wrap {
-		height: 14px;
-		background: #2a2a2a;
-		border-radius: 3px;
-		overflow: hidden;
-	}
-
-	.funnel-bar {
-		height: 100%;
-		background: linear-gradient(90deg, #8bd0f7, #6fa8d6);
-		transition: width 0.3s ease;
-	}
-
-	.funnel-drop {
-		font-size: 0.7rem;
-		color: #b47a7a;
-		margin-top: 0.1rem;
+		color: #888;
 	}
 </style>
