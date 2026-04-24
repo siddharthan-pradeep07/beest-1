@@ -101,6 +101,14 @@
   let unreadCount = $state(0);
   let nicknameInput = $state(data.user.nickname ?? '');
   let nicknameSaving = $state(false);
+  let genderSaving = $state(false);
+  const GENDER_OPTIONS: { value: string; label: string }[] = [
+    { value: 'male', label: 'Male' },
+    { value: 'female', label: 'Female' },
+    { value: 'non_binary_other', label: 'Non Binary / Other' },
+    { value: 'not_sure', label: "I'm Not Sure" },
+    { value: 'prefer_not_to_say', label: 'Prefer not to say' },
+  ];
   let totalBuilders = $state(0);
   let totalHours = $state(0);
   let hoursByStatus = $state<Record<string, number>>({});
@@ -820,6 +828,22 @@
       }
     } catch { /* ignore */ }
     nicknameSaving = false;
+  }
+
+  async function saveGender(value: string) {
+    if (!value || value === data.user.gender) return;
+    genderSaving = true;
+    try {
+      const res = await fetch('/api/auth/gender', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gender: value })
+      });
+      if (res.ok) {
+        data.user.gender = value;
+      }
+    } catch { /* ignore */ }
+    genderSaving = false;
   }
 
   async function fetchStickerLink() {
@@ -1902,7 +1926,7 @@
                 <p class="settings-link-desc">Ask questions in #beest-help on Slack.</p>
               </a>
               <div class="settings-link">
-                <h3 class="settings-link-title">Bug Bounty</h3>
+                <h3 class="settings-link-title">Security Bounty</h3>
                 <p class="settings-link-desc">Beest is participating in a security bounty. You can submit proven vulnerabilities for reward <a href="https://security.hackclub.com/" target="_blank" rel="noopener">here</a>.</p>
               </div>
               <a href="/api/auth/logout" class="settings-link settings-link-logout">
@@ -1965,6 +1989,20 @@
                 <div class="account-field">
                   <span class="account-label">Slack ID</span>
                   <span class="account-value">{data.user.slack_id ?? '—'}</span>
+                </div>
+                <div class="account-field">
+                  <span class="account-label">Gender</span>
+                  <select
+                    class="gender-select"
+                    value={data.user.gender ?? ''}
+                    disabled={genderSaving}
+                    onchange={(e) => saveGender(e.currentTarget.value)}
+                  >
+                    <option value="" disabled>Select…</option>
+                    {#each GENDER_OPTIONS as opt}
+                      <option value={opt.value}>{opt.label}</option>
+                    {/each}
+                  </select>
                 </div>
               </div>
             </div>
@@ -5438,6 +5476,32 @@
   }
 
   .nickname-save:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .gender-select {
+    font-family: "Courier New", monospace;
+    font-size: 15px;
+    color: #000;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(203, 193, 174, 0.3);
+    padding: 4px 8px;
+    text-align: right;
+    cursor: pointer;
+  }
+
+  .gender-select option {
+    color: #000;
+    background: #cbc1ae;
+  }
+
+  .gender-select:focus {
+    outline: none;
+    border-color: #93b4cd;
+  }
+
+  .gender-select:disabled {
     opacity: 0.5;
     cursor: default;
   }

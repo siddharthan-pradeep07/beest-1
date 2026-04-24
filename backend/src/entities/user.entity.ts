@@ -39,6 +39,9 @@ export class User {
   @Column({ nullable: true, name: 'hackatime_user_id' })
   hackatimeUserId: string;
 
+  @Column({ nullable: true })
+  gender: string;
+
   @Column({
     nullable: true,
     name: 'hackatime_token',

@@ -16,6 +16,15 @@ const EMAIL_RE =
 
 const REFRESH_TOKEN_EXPIRY_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 
+export const ALLOWED_GENDERS = [
+  'male',
+  'female',
+  'non_binary_other',
+  'not_sure',
+  'prefer_not_to_say',
+] as const;
+export type Gender = (typeof ALLOWED_GENDERS)[number];
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -208,6 +217,7 @@ export class AuthService {
       slack_id: userinfo.slack_id,
       has_address: user.hasAddress,
       has_birthdate: user.hasBirthdate,
+      gender: user.gender,
     });
 
     return { token, refreshToken, redirectTo };
@@ -245,6 +255,7 @@ export class AuthService {
       slack_id: user.slackId,
       has_address: user.hasAddress,
       has_birthdate: user.hasBirthdate,
+      gender: user.gender,
     });
 
     return { token, refreshToken: newRefreshToken };
@@ -284,6 +295,7 @@ export class AuthService {
       slack_id: user.slackId,
       has_address: user.hasAddress,
       has_birthdate: user.hasBirthdate,
+      gender: user.gender,
       impersonator_uid: adminUid,
       impersonator_name: adminName,
     });
@@ -310,6 +322,32 @@ export class AuthService {
       slack_id: user.slackId,
       has_address: user.hasAddress,
       has_birthdate: user.hasBirthdate,
+      gender: user.gender,
+    });
+
+    return { token };
+  }
+
+  async updateGender(
+    userId: string,
+    gender: Gender,
+  ): Promise<{ token: string }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new Error('User not found');
+
+    user.gender = gender;
+    await this.userRepo.save(user);
+
+    const token = this.jwtService.sign({
+      sub: user.hcaSub,
+      uid: user.id,
+      email: user.email,
+      name: user.name,
+      nickname: user.nickname,
+      slack_id: user.slackId,
+      has_address: user.hasAddress,
+      has_birthdate: user.hasBirthdate,
+      gender: user.gender,
     });
 
     return { token };
