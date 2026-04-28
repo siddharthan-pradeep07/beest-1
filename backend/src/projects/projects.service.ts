@@ -247,9 +247,19 @@ export class ProjectsService {
   /**
    * Returns approved projects grouped by user, including user name info.
    * Only includes users who have a hackatime token (needed to fetch hours).
+   * Each entry exposes the per-project hackatime names and overrideHours so
+   * callers can compute approved (capped) hours, not raw Hackatime totals.
    */
   async findApprovedProjectsGroupedByUser(): Promise<
-    Map<string, { hcaSub: string; name: string | null; nickname: string | null; projectNames: string[] }>
+    Map<
+      string,
+      {
+        hcaSub: string;
+        name: string | null;
+        nickname: string | null;
+        projects: { hackatimeProjectNames: string[]; overrideHours: number }[];
+      }
+    >
   > {
     const projects = await this.projectRepo
       .createQueryBuilder('project')
@@ -260,6 +270,7 @@ export class ProjectsService {
       .select([
         'project.id',
         'project.hackatimeProjectName',
+        'project.overrideHours',
         'user.id',
         'user.hcaSub',
         'user.name',
@@ -269,12 +280,17 @@ export class ProjectsService {
 
     const grouped = new Map<
       string,
-      { hcaSub: string; name: string | null; nickname: string | null; projectNames: string[] }
+      {
+        hcaSub: string;
+        name: string | null;
+        nickname: string | null;
+        projects: { hackatimeProjectNames: string[]; overrideHours: number }[];
+      }
     >();
 
     for (const p of projects) {
       const userId = p.user.id;
-      const names = (p.hackatimeProjectName ?? []).filter((n) => !!n);
+      const names = [...new Set((p.hackatimeProjectName ?? []).filter((n) => !!n))];
       if (names.length === 0) continue;
 
       if (!grouped.has(userId)) {
@@ -282,15 +298,13 @@ export class ProjectsService {
           hcaSub: p.user.hcaSub,
           name: p.user.name,
           nickname: p.user.nickname,
-          projectNames: [],
+          projects: [],
         });
       }
-      grouped.get(userId)!.projectNames.push(...names);
-    }
-
-    // Deduplicate project names per user
-    for (const entry of grouped.values()) {
-      entry.projectNames = [...new Set(entry.projectNames)];
+      grouped.get(userId)!.projects.push({
+        hackatimeProjectNames: names,
+        overrideHours: p.overrideHours ?? 0,
+      });
     }
 
     return grouped;

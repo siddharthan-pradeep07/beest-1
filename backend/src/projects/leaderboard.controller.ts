@@ -31,10 +31,24 @@ export class LeaderboardController {
 
     const results = await Promise.allSettled(
       Array.from(grouped.entries()).map(async ([, entry]) => {
-        const { hours } = await this.hackatimeService.getHoursForProjects(
+        const allNames = [
+          ...new Set(entry.projects.flatMap((p) => p.hackatimeProjectNames)),
+        ];
+        const { perProject } = await this.hackatimeService.getHoursForProjects(
           entry.hcaSub,
-          entry.projectNames,
+          allNames,
         );
+        // Approved hours per project = min(overrideHours, hackatime hours on its names).
+        // Mirrors the per-user calc in projects.controller.ts#getHours so the
+        // leaderboard shows what was actually locked in at approval, not raw logged time.
+        let hours = 0;
+        for (const proj of entry.projects) {
+          let projHours = 0;
+          for (const name of proj.hackatimeProjectNames) {
+            projHours += perProject[name] ?? 0;
+          }
+          hours += Math.min(proj.overrideHours, projHours);
+        }
         return {
           name: entry.nickname || entry.name || 'Anonymous',
           hours,
