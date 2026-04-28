@@ -749,6 +749,17 @@
 		}
 	}
 
+	async function refundOrder(order: AdminOrder) {
+		if (!confirm(`Refund ${order.quantity}x ${order.itemName} to ${order.userName}? This returns ${order.pipesSpent} Pipes, restocks the item, and removes the order.`)) return;
+		fulfillmentActionLoading = order.id;
+		try {
+			const res = await fetch(`/api/admin/orders/${order.id}/refund`, { method: 'POST' });
+			if (res.ok) await loadFulfillment();
+		} finally {
+			fulfillmentActionLoading = '';
+		}
+	}
+
 	async function sendOrderMessage(orderId: string) {
 		const msg = fulfillmentMsg[orderId]?.trim();
 		if (!msg) return;
@@ -1150,6 +1161,9 @@
 												{fulfillmentActionLoading === order.id ? '...' : 'Fulfill'}
 											</button>
 										{/if}
+										<button class="btn btn-sm btn-danger" onclick={() => refundOrder(order)} disabled={fulfillmentActionLoading === order.id}>
+											{fulfillmentActionLoading === order.id ? '...' : 'Refund'}
+										</button>
 										<div class="fulfillment-msg-row">
 											<input
 												type="text"
@@ -3514,6 +3528,15 @@
 		color: #e6f4fe;
 	}
 	.btn-primary:hover { background: rgba(147, 180, 205, 0.5); }
+
+	.btn-danger {
+		background: rgba(196, 131, 130, 0.25);
+		border-color: #c48382;
+		color: #f4d6d5;
+	}
+	.btn-danger:hover:not(:disabled) { background: rgba(196, 131, 130, 0.45); }
+	.admin-shell.light .btn-danger { background: #f5d5d5; color: #c02020; border-color: #aa5050; }
+	.admin-shell.light .btn-danger:hover:not(:disabled) { background: #f0c0c0; }
 
 	/* light mode overrides */
 	.admin-shell.light .admin-table th { color: #333; }

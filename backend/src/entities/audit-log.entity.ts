@@ -24,6 +24,7 @@ export const AUDIT_ACTIONS = [
   'admin_resync_airtable',
   'shop_purchase',
   'order_fulfilled',
+  'order_refunded',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

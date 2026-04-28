@@ -295,6 +295,64 @@ export class ShopService {
     });
   }
 
+  /**
+   * Refund an order — returns pipes, restocks the item, and deletes the order
+   * (which cascades to its fulfillment updates). Used when an order can't be
+   * fulfilled or was placed in error.
+   */
+  async refundOrder(orderId: string, adminId?: string) {
+    return this.dataSource.transaction('SERIALIZABLE', async (manager) => {
+      const order = await manager.findOne(Order, {
+        where: { id: orderId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!order) throw new NotFoundException('Order not found');
+
+      const user = await manager.findOne(User, {
+        where: { id: order.userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (user) {
+        user.pipes = (user.pipes ?? 0) + order.pipesSpent;
+        await manager.save(User, user);
+      }
+
+      if (order.shopItemId) {
+        const item = await manager.findOne(ShopItem, {
+          where: { id: order.shopItemId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (item && item.stock !== null) {
+          item.stock += order.quantity;
+          await manager.save(ShopItem, item);
+        }
+      }
+
+      const snapshot = {
+        userId: order.userId,
+        itemName: order.itemName,
+        quantity: order.quantity,
+        pipesSpent: order.pipesSpent,
+      };
+      await manager.remove(Order, order);
+      return snapshot;
+    }).then(async (snapshot) => {
+      await this.auditLogService.log(
+        snapshot.userId,
+        'order_refunded',
+        `Order for ${snapshot.quantity}x ${snapshot.itemName} was refunded (${snapshot.pipesSpent} Pipes returned)`,
+      );
+      if (adminId) {
+        await this.auditLogService.log(
+          adminId,
+          'order_refunded',
+          `Refunded ${snapshot.quantity}x ${snapshot.itemName} (${snapshot.pipesSpent} Pipes returned)`,
+        );
+      }
+      return { success: true };
+    });
+  }
+
   /** Send a custom fulfillment message */
   async sendFulfillmentMessage(orderId: string, message: string) {
     const order = await this.orderRepo.findOne({ where: { id: orderId } });

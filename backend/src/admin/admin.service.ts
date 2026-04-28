@@ -361,6 +361,9 @@ export class AdminService {
       throw new BadRequestException('You cannot review your own project');
     }
 
+    const previousStatus = project.status;
+    const previousOverrideHours = project.overrideHours;
+
     // Find the latest unreviewed submission for this project
     const submission = await this.submissionRepo.findOne({
       where: { projectId, status: 'unreviewed' },
@@ -377,13 +380,29 @@ export class AdminService {
     }
     await this.projectRepo.save(project);
 
-    // 2a. Claw back pipes if revoking a previously-approved project
-    if (status === 'changes_needed' && (project.pipesGranted ?? 0) > 0) {
-      const clawback = project.pipesGranted!;
-      await this.userRepo.decrement({ id: project.userId }, 'pipes', clawback);
-      project.pipesGranted = 0;
-      await this.projectRepo.save(project);
-      this.logger.warn(`Clawed back ${clawback} pipes from user ${project.userId} for project ${project.id}`);
+    // 2a. Handle rejection.
+    // - Direct approved → changes_needed: wipe overrideHours and claw back pipes (the approval is being revoked).
+    // - unreviewed → changes_needed with prior approval (pipesGranted > 0): preserve the prior approval's
+    //   hours and pipes — only the new resubmission is being rejected, the original approval still stands.
+    // - Any other path into changes_needed (never approved): clear overrideHours so a reviewer-set value
+    //   on the rejection doesn't bleed into the approved bucket on the next resubmission.
+    if (status === 'changes_needed') {
+      if (previousStatus === 'approved') {
+        project.overrideHours = 0;
+        if ((project.pipesGranted ?? 0) > 0) {
+          const clawback = project.pipesGranted!;
+          await this.userRepo.decrement({ id: project.userId }, 'pipes', clawback);
+          project.pipesGranted = 0;
+          this.logger.warn(`Clawed back ${clawback} pipes from user ${project.userId} for project ${project.id}`);
+        }
+        await this.projectRepo.save(project);
+      } else if (previousStatus === 'unreviewed' && (project.pipesGranted ?? 0) > 0) {
+        project.overrideHours = previousOverrideHours;
+        await this.projectRepo.save(project);
+      } else {
+        project.overrideHours = 0;
+        await this.projectRepo.save(project);
+      }
     }
 
     // 2b. Grant pipes as delta on this submission

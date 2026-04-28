@@ -384,6 +384,16 @@ export class AdminController {
   }
 
   @UseGuards(SuperAdminGuard)
+  @Post('orders/:id/refund')
+  async refundOrder(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const adminId = (req as any).user?.uid;
+    return this.shopService.refundOrder(id, adminId);
+  }
+
+  @UseGuards(SuperAdminGuard)
   @Post('orders/:id/message')
   async sendFulfillmentMessage(
     @Param('id', ParseUUIDPipe) id: string,
