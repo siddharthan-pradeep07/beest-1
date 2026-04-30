@@ -21,11 +21,23 @@ export const load: PageServerLoad = async ({ url, cookies }) => {
 		return { error: 'Authentication could not be completed. Please try again.' };
 	}
 
+	// Read attribution cookie (set client-side on landing) and clear it
+	let attribution: unknown = undefined;
+	const attributionRaw = cookies.get('attribution');
+	if (attributionRaw) {
+		try {
+			attribution = JSON.parse(attributionRaw);
+		} catch {
+			// malformed — ignore
+		}
+		cookies.delete('attribution', { path: '/' });
+	}
+
 	// Forward everything to the backend
 	const res = await fetch(`${BACKEND_URL}/api/auth/handle-callback`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ code, state, storedState })
+		body: JSON.stringify({ code, state, storedState, attribution })
 	});
 
 	if (!res.ok) {
