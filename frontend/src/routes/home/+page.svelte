@@ -5912,7 +5912,7 @@
   .gender-select {
     font-family: "Courier New", monospace;
     font-size: 15px;
-    color: #000;
+    color: #cbc1ae;
     background: rgba(0, 0, 0, 0.25);
     border: 1px solid rgba(203, 193, 174, 0.3);
     padding: 4px 8px;
