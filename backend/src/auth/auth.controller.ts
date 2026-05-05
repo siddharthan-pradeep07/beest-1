@@ -38,6 +38,13 @@ export class AuthController {
       code: string;
       state: string;
       storedState: string;
+      attribution?: {
+        utm_source?: string | null;
+        utm_medium?: string | null;
+        utm_campaign?: string | null;
+        referrer?: string | null;
+        landing_path?: string | null;
+      };
     },
   ) {
     if (!body.code) {
@@ -51,6 +58,7 @@ export class AuthController {
         body.code,
         body.state,
         body.storedState,
+        body.attribution,
       );
     } catch {
       throw new UnauthorizedException('Authentication failed');

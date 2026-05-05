@@ -158,6 +158,7 @@ export class ProjectsService {
         'otherHcProgram',
         'aiUse',
         'overrideHours',
+        'pipesGranted',
         'createdAt',
         'updatedAt',
       ],

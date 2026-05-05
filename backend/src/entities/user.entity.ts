@@ -69,6 +69,21 @@ export class User {
   @Column({ type: 'integer', default: 0 })
   pipes: number;
 
+  @Column({ nullable: true, name: 'utm_source' })
+  utmSource: string;
+
+  @Column({ nullable: true, name: 'utm_medium' })
+  utmMedium: string;
+
+  @Column({ nullable: true, name: 'utm_campaign' })
+  utmCampaign: string;
+
+  @Column({ nullable: true })
+  referrer: string;
+
+  @Column({ nullable: true, name: 'landing_path' })
+  landingPath: string;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

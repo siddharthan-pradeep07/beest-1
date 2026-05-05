@@ -14,9 +14,32 @@
 		}
 	}
 
+	function captureAttribution() {
+		const alreadySet = document.cookie
+			.split(';')
+			.some(c => c.trim().startsWith('attribution='));
+		if (alreadySet) return;
+
+		const params = new URLSearchParams(window.location.search);
+		const utm_source = params.get('utm_source');
+		const utm_medium = params.get('utm_medium');
+		const utm_campaign = params.get('utm_campaign');
+		const referrer = document.referrer || null;
+		const landing_path = window.location.pathname || null;
+
+		// Only set the cookie if there's something worth attributing
+		if (!utm_source && !utm_medium && !utm_campaign && !referrer) return;
+
+		const data = { utm_source, utm_medium, utm_campaign, referrer, landing_path };
+		const value = encodeURIComponent(JSON.stringify(data));
+		const maxAge = 60 * 60 * 24 * 30; // 30 days
+		document.cookie = `attribution=${value}; path=/; max-age=${maxAge}; samesite=lax`;
+	}
+
 	$effect(() => {
 		if (typeof document !== 'undefined') {
 			checkImpersonating();
+			captureAttribution();
 			if (typeof localStorage !== 'undefined' && localStorage.getItem('customCursor') !== 'off') {
 				document.documentElement.classList.add('custom-cursor');
 			}
