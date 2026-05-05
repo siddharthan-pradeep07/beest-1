@@ -7,12 +7,14 @@ import { ShopItem } from '../entities/shop-item.entity';
 import { Order } from '../entities/order.entity';
 import { FulfillmentUpdate } from '../entities/fulfillment-update.entity';
 import { User } from '../entities/user.entity';
+import { ShopSuggestion } from '../entities/shop-suggestion.entity';
+import { ShopSuggestionVote } from '../entities/shop-suggestion-vote.entity';
 import { ShopController } from './shop.controller';
 import { ShopService } from './shop.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ShopItem, Order, FulfillmentUpdate, User]),
+    TypeOrmModule.forFeature([ShopItem, Order, FulfillmentUpdate, User, ShopSuggestion, ShopSuggestionVote]),
     AuthModule,
     AuditLogModule,
     RsvpModule,

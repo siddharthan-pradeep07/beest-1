@@ -11,6 +11,8 @@ import { ShopItem } from '../entities/shop-item.entity';
 import { Order } from '../entities/order.entity';
 import { FulfillmentUpdate } from '../entities/fulfillment-update.entity';
 import { User } from '../entities/user.entity';
+import { ShopSuggestion } from '../entities/shop-suggestion.entity';
+import { ShopSuggestionVote } from '../entities/shop-suggestion-vote.entity';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { RsvpService } from '../rsvp/rsvp.service';
 
@@ -27,10 +29,135 @@ export class ShopService {
     private readonly fulfillmentRepo: Repository<FulfillmentUpdate>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(ShopSuggestion)
+    private readonly suggestionRepo: Repository<ShopSuggestion>,
+    @InjectRepository(ShopSuggestionVote)
+    private readonly suggestionVoteRepo: Repository<ShopSuggestionVote>,
     private readonly dataSource: DataSource,
     private readonly auditLogService: AuditLogService,
     private readonly rsvpService: RsvpService,
   ) {}
+
+  // ── Shop suggestions ──
+
+  async listSuggestions(userId: string) {
+    const rows = await this.suggestionRepo
+      .createQueryBuilder('s')
+      .leftJoin('s.user', 'u')
+      .leftJoin(
+        ShopSuggestionVote,
+        'v',
+        'v.suggestion_id = s.id',
+      )
+      .leftJoin(
+        ShopSuggestionVote,
+        'mv',
+        'mv.suggestion_id = s.id AND mv.user_id = :userId',
+        { userId },
+      )
+      .select('s.id', 'id')
+      .addSelect('s.text', 'text')
+      .addSelect('s.created_at', 'createdAt')
+      .addSelect('s.user_id', 'userId')
+      .addSelect('COALESCE(u.nickname, u.name)', 'authorName')
+      .addSelect('COUNT(DISTINCT v.id)::int', 'voteCount')
+      .addSelect('BOOL_OR(mv.id IS NOT NULL)', 'votedByUser')
+      .groupBy('s.id')
+      .addGroupBy('u.nickname')
+      .addGroupBy('u.name')
+      .orderBy('"voteCount"', 'DESC')
+      .addOrderBy('s.created_at', 'DESC')
+      .getRawMany();
+
+    return rows.map((r) => ({
+      id: r.id,
+      text: r.text,
+      createdAt: r.createdAt,
+      authorName: r.authorName ?? 'Someone',
+      isMine: r.userId === userId,
+      voteCount: Number(r.voteCount ?? 0),
+      votedByUser: !!r.votedByUser,
+    }));
+  }
+
+  async createSuggestion(userId: string, text: string) {
+    const clean = text.replace(/\0/g, '').trim().slice(0, 200);
+    if (!clean) {
+      throw new BadRequestException('Suggestion cannot be empty');
+    }
+
+    // Rate limit: max 5 suggestions per user per day
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recent = await this.suggestionRepo
+      .createQueryBuilder('s')
+      .where('s.user_id = :userId', { userId })
+      .andWhere('s.created_at > :since', { since })
+      .getCount();
+    if (recent >= 5) {
+      throw new BadRequestException(
+        'You can suggest up to 5 items per day. Try again tomorrow!',
+      );
+    }
+
+    const suggestion = this.suggestionRepo.create({ userId, text: clean });
+    const saved = await this.suggestionRepo.save(suggestion);
+
+    // Auto-upvote your own suggestion
+    try {
+      const vote = this.suggestionVoteRepo.create({
+        userId,
+        suggestionId: saved.id,
+      });
+      await this.suggestionVoteRepo.save(vote);
+    } catch {
+      // ignore unique violation race
+    }
+
+    return { id: saved.id };
+  }
+
+  /** Toggle vote: adds an upvote if missing, removes if present. */
+  async toggleSuggestionVote(userId: string, suggestionId: string) {
+    const suggestion = await this.suggestionRepo.findOne({
+      where: { id: suggestionId },
+    });
+    if (!suggestion) throw new NotFoundException('Suggestion not found');
+
+    const existing = await this.suggestionVoteRepo.findOne({
+      where: { userId, suggestionId },
+    });
+    if (existing) {
+      await this.suggestionVoteRepo.remove(existing);
+      const count = await this.suggestionVoteRepo.count({
+        where: { suggestionId },
+      });
+      return { votedByUser: false, voteCount: count };
+    }
+
+    try {
+      const vote = this.suggestionVoteRepo.create({ userId, suggestionId });
+      await this.suggestionVoteRepo.save(vote);
+    } catch (err: any) {
+      if (err?.code !== '23505') throw err;
+      // race — already voted
+    }
+    const count = await this.suggestionVoteRepo.count({
+      where: { suggestionId },
+    });
+    return { votedByUser: true, voteCount: count };
+  }
+
+  async deleteSuggestion(userId: string, suggestionId: string) {
+    const suggestion = await this.suggestionRepo.findOne({
+      where: { id: suggestionId },
+    });
+    if (!suggestion) throw new NotFoundException('Suggestion not found');
+    if (suggestion.userId !== userId) {
+      throw new BadRequestException('You can only delete your own suggestions');
+    }
+    await this.suggestionRepo.remove(suggestion);
+    return { success: true };
+  }
 
   async listActive() {
     return this.shopRepo.find({
