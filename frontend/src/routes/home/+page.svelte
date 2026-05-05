@@ -2025,7 +2025,7 @@
               <div class="leaderboard-row" class:top-three={i < 3}>
                 <span class="lb-rank">{i + 1}</span>
                 <span class="lb-name">{entry.name}</span>
-                <span class="lb-hours">{entry.hours}h</span>
+                <span class="lb-hours">{Math.round(entry.hours * 10) / 10}h</span>
               </div>
             {/each}
           {/if}

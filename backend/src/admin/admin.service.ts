@@ -373,7 +373,23 @@ export class AdminService {
     // 1. Update project status and hours
     project.status = status;
     if (overrideHours !== null && overrideHours !== undefined) {
-      project.overrideHours = Math.round(overrideHours * 10) / 10;
+      const proposed = Math.round(overrideHours * 10) / 10;
+      // overrideHours is the cumulative TOTAL approved hours for this project,
+      // not the delta since last approval. If a reviewer sets it below what's
+      // already been paid out in pipes, the bar would silently desync (it'd
+      // show 0 hours while the user keeps the pipes — see issue from sadrita,
+      // 2026-04-29). Reject so the reviewer can correct the form. To genuinely
+      // clawback hours, route through changes_needed first.
+      if (
+        status === 'approved' &&
+        (project.pipesGranted ?? 0) > 0 &&
+        proposed < (project.pipesGranted ?? 0)
+      ) {
+        throw new BadRequestException(
+          `Cannot reduce approved hours to ${proposed} — ${project.pipesGranted} pipes have already been granted on this project. Enter the cumulative total approved hours, or send to "changes needed" first to claw back pipes.`,
+        );
+      }
+      project.overrideHours = proposed;
     }
     if (internalHours !== null && internalHours !== undefined) {
       project.internalHours = Math.round(internalHours * 10) / 10;
