@@ -715,6 +715,100 @@
     selectedShopItem = null;
   }
 
+  // Shop suggestions state
+  type SuggestionType = {
+    id: string;
+    text: string;
+    createdAt: string;
+    authorName: string;
+    isMine: boolean;
+    voteCount: number;
+    votedByUser: boolean;
+  };
+  let suggestionsOpen = $state(false);
+  let suggestions = $state<SuggestionType[]>([]);
+  let suggestionsLoading = $state(false);
+  let newSuggestionText = $state('');
+  let suggestionSubmitting = $state(false);
+  let suggestionError = $state('');
+
+  async function openSuggestions() {
+    suggestionsOpen = true;
+    suggestionsLoading = true;
+    suggestionError = '';
+    try {
+      const res = await fetch('/api/shop/suggestions');
+      if (res.ok) suggestions = await res.json();
+    } catch { /* silent */ }
+    suggestionsLoading = false;
+  }
+
+  function closeSuggestions() {
+    suggestionsOpen = false;
+    newSuggestionText = '';
+    suggestionError = '';
+  }
+
+  async function submitSuggestion() {
+    const text = newSuggestionText.trim();
+    if (!text || suggestionSubmitting) return;
+    suggestionSubmitting = true;
+    suggestionError = '';
+    try {
+      const res = await fetch('/api/shop/suggestions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        suggestionError = data.message || 'Failed to submit';
+      } else {
+        newSuggestionText = '';
+        // Refresh list
+        const listRes = await fetch('/api/shop/suggestions');
+        if (listRes.ok) suggestions = await listRes.json();
+      }
+    } catch {
+      suggestionError = 'Network error — try again';
+    }
+    suggestionSubmitting = false;
+  }
+
+  async function toggleSuggestionVote(s: SuggestionType) {
+    // Optimistic update
+    const prev = { voteCount: s.voteCount, votedByUser: s.votedByUser };
+    const willVote = !s.votedByUser;
+    s.voteCount += willVote ? 1 : -1;
+    s.votedByUser = willVote;
+    suggestions = [...suggestions].sort((a, b) => b.voteCount - a.voteCount || (a.createdAt > b.createdAt ? -1 : 1));
+    try {
+      const res = await fetch(`/api/shop/suggestions/${s.id}/vote`, { method: 'POST' });
+      if (!res.ok) throw new Error('vote failed');
+      const data = await res.json();
+      const idx = suggestions.findIndex(x => x.id === s.id);
+      if (idx >= 0) {
+        suggestions[idx].voteCount = data.voteCount;
+        suggestions[idx].votedByUser = data.votedByUser;
+        suggestions = [...suggestions].sort((a, b) => b.voteCount - a.voteCount || (a.createdAt > b.createdAt ? -1 : 1));
+      }
+    } catch {
+      // Revert
+      s.voteCount = prev.voteCount;
+      s.votedByUser = prev.votedByUser;
+      suggestions = [...suggestions];
+    }
+  }
+
+  async function deleteSuggestion(id: string) {
+    try {
+      const res = await fetch(`/api/shop/suggestions/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        suggestions = suggestions.filter(s => s.id !== id);
+      }
+    } catch { /* silent */ }
+  }
+
 
   let faqOpenIndex: number | null = $state(null);
   const faqItems = [
@@ -1504,11 +1598,21 @@
                 <h2 class="section-title">Earn Prizes</h2>
                 <p class="section-subtitle">Build projects, earn hours, unlock rewards.<br><b>Hours spent in the shop detract from qualifying hours!</b></p>
               </div>
-              <div class="pipes-box">
-                <img src="/images/pipes.png" alt="Pipes" class="pipe-img" />
-                <div class="pipes-box-text">
-                  <span class="pipes-box-label">Pipes</span>
-                  <span class="pipes-box-value">{userPipes}</span>
+              <div class="shop-header-actions">
+                <button class="suggestions-btn" type="button" onclick={openSuggestions} aria-label="Shop suggestions">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="suggestions-icon" aria-hidden="true">
+                    <path d="M9 18h6" />
+                    <path d="M10 22h4" />
+                    <path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V18h6v-1.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z" />
+                  </svg>
+                  <span>Suggestions</span>
+                </button>
+                <div class="pipes-box">
+                  <img src="/images/pipes.png" alt="Pipes" class="pipe-img" />
+                  <div class="pipes-box-text">
+                    <span class="pipes-box-label">Pipes</span>
+                    <span class="pipes-box-value">{userPipes}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1637,6 +1741,75 @@
       </div>
     </div>
     {/if}
+
+    <!-- Shop suggestions modal -->
+    {#if suggestionsOpen}
+    <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+    <div use:portal class="suggestions-overlay" onclick={closeSuggestions} onkeydown={(e) => { if (e.key === 'Escape') closeSuggestions(); }}>
+      <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+      <div class="suggestions-modal" onclick={(e) => e.stopPropagation()}>
+        <button class="suggestions-close" onclick={closeSuggestions} type="button" aria-label="Close">&times;</button>
+        <h2 class="suggestions-title">Shop Suggestions</h2>
+        <p class="suggestions-subtitle">What should we add to the shop? Upvote ideas you like.</p>
+
+        <div class="suggestions-new">
+          <textarea
+            class="suggestions-input"
+            placeholder="Suggest a new shop item..."
+            maxlength="200"
+            bind:value={newSuggestionText}
+            disabled={suggestionSubmitting}
+          ></textarea>
+          <div class="suggestions-new-footer">
+            <span class="suggestions-counter">{newSuggestionText.length}/200</span>
+            <button
+              class="suggestions-submit"
+              type="button"
+              onclick={submitSuggestion}
+              disabled={!newSuggestionText.trim() || suggestionSubmitting}
+            >{suggestionSubmitting ? 'Submitting...' : 'Suggest'}</button>
+          </div>
+          {#if suggestionError}
+            <p class="suggestions-error">{suggestionError}</p>
+          {/if}
+        </div>
+
+        <div class="suggestions-list">
+          {#if suggestionsLoading}
+            <p class="suggestions-empty">Loading...</p>
+          {:else if suggestions.length === 0}
+            <p class="suggestions-empty">No suggestions yet — be the first!</p>
+          {:else}
+            {#each suggestions as s (s.id)}
+              <div class="suggestion-row">
+                <button
+                  class="suggestion-vote"
+                  class:voted={s.votedByUser}
+                  type="button"
+                  onclick={() => toggleSuggestionVote(s)}
+                  aria-label={s.votedByUser ? 'Remove upvote' : 'Upvote'}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="6 14 12 8 18 14" />
+                  </svg>
+                  <span class="suggestion-vote-count">{s.voteCount}</span>
+                </button>
+                <div class="suggestion-body">
+                  <p class="suggestion-text">{s.text}</p>
+                  <p class="suggestion-meta">
+                    <span>by {s.authorName}</span>
+                    {#if s.isMine}
+                      <button class="suggestion-delete" type="button" onclick={() => deleteSuggestion(s.id)}>Delete</button>
+                    {/if}
+                  </p>
+                </div>
+              </div>
+            {/each}
+          {/if}
+        </div>
+      </div>
+    </div>
+    {/if}
     {/if}
 
     {#if activeSection === 'explore'}
@@ -1707,119 +1880,6 @@
     </section>
     {/if}
 
-    <!-- Project detail overlay -->
-    {#if detailProject}
-    <div class="detail-overlay" role="dialog" aria-modal="true">
-      <div class="detail-backdrop" onclick={closeProjectDetail} onkeydown={(e) => e.key === 'Escape' && closeProjectDetail()} role="button" tabindex="-1"></div>
-      <div class="detail-panel">
-        <button class="detail-close" onclick={closeProjectDetail} type="button" aria-label="Close">&times;</button>
-
-        <!-- Image gallery -->
-        <div class="detail-gallery">
-          {#if detailProject.screenshot1Url || detailProject.screenshot2Url}
-            {@const screenshots = [detailProject.screenshot1Url, detailProject.screenshot2Url].filter(Boolean) as string[]}
-            <div class="detail-img-wrap">
-              <img
-                class="detail-img"
-                src={screenshots[detailActiveImg] ?? screenshots[0]}
-                alt="{detailProject.name} screenshot {detailActiveImg + 1}"
-              />
-              {#if screenshots.length > 1}
-                <button class="detail-arrow detail-arrow-left" onclick={() => detailActiveImg = detailActiveImg === 0 ? screenshots.length - 1 : detailActiveImg - 1} type="button" aria-label="Previous screenshot">&#8249;</button>
-                <button class="detail-arrow detail-arrow-right" onclick={() => detailActiveImg = (detailActiveImg + 1) % screenshots.length} type="button" aria-label="Next screenshot">&#8250;</button>
-                <div class="detail-img-dots">
-                  {#each screenshots as _, i}
-                    <span class="detail-dot" class:detail-dot-active={detailActiveImg === i}></span>
-                  {/each}
-                </div>
-              {/if}
-            </div>
-          {:else}
-            <div class="detail-img-wrap detail-no-img">
-              <span>No screenshots</span>
-            </div>
-          {/if}
-        </div>
-
-        <!-- Project info -->
-        <div class="detail-info">
-          <div class="detail-header">
-            <h2 class="detail-name">{detailProject.name}</h2>
-            <span class="detail-type">{detailProject.projectType}</span>
-          </div>
-          <p class="detail-builder">by {detailProject.builderName}</p>
-          {#if detailProject.hours > 0}
-            <p class="detail-hours">{detailProject.hours.toFixed(1)} hours</p>
-          {/if}
-          <p class="detail-desc">{detailProject.description}</p>
-
-          <!-- Chunky action buttons -->
-          <div class="detail-actions">
-            {#if detailProject.demoUrl}
-              <a href={detailProject.demoUrl} target="_blank" rel="noopener noreferrer" class="detail-btn detail-btn-demo">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
-                View Demo
-              </a>
-            {/if}
-            {#if detailProject.codeUrl}
-              <a href={detailProject.codeUrl} target="_blank" rel="noopener noreferrer" class="detail-btn detail-btn-code">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-                Source Code
-              </a>
-            {/if}
-          </div>
-        </div>
-
-        <!-- Comments -->
-        <div class="detail-comments">
-          <h3 class="detail-comments-title">Comments</h3>
-
-          <div class="detail-comment-form">
-            <textarea
-              class="detail-comment-input"
-              bind:value={detailCommentText}
-              placeholder="Leave a comment..."
-              maxlength="500"
-              rows="3"
-            ></textarea>
-            <div class="detail-comment-form-footer">
-              <span class="detail-comment-charcount">{detailCommentText.length}/500</span>
-              <button
-                class="detail-comment-submit"
-                onclick={submitComment}
-                disabled={detailCommentSubmitting || detailCommentText.trim().length === 0}
-                type="button"
-              >
-                {detailCommentSubmitting ? 'Posting...' : 'Post'}
-              </button>
-            </div>
-          </div>
-
-          {#if detailCommentsLoading}
-            <p class="detail-comments-loading">Loading comments...</p>
-          {:else if detailComments.length === 0}
-            <p class="detail-comments-empty">No comments yet. Be the first!</p>
-          {:else}
-            <div class="detail-comments-list">
-              {#each detailComments as comment}
-                <div class="detail-comment">
-                  <div class="detail-comment-header">
-                    <span class="detail-comment-author">{comment.authorName}</span>
-                    <span class="detail-comment-date">{new Date(comment.createdAt).toLocaleDateString()}</span>
-                    {#if comment.authorId === data.user.uid || detailProject.ownerId === data.user.uid || data.role}
-                      <button class="detail-comment-delete" onclick={() => deleteComment(comment.id)} type="button" title="Delete comment">&times;</button>
-                    {/if}
-                  </div>
-                  <p class="detail-comment-body">{comment.body}</p>
-                </div>
-              {/each}
-            </div>
-          {/if}
-        </div>
-      </div>
-    </div>
-    {/if}
-
     {#if activeSection === 'leaderboard'}
     <section class="section section-leaderboard">
       <div class="section-inner">
@@ -1852,7 +1912,7 @@
               <div class="leaderboard-row" class:top-three={i < 3}>
                 <span class="lb-rank">{i + 1}</span>
                 <span class="lb-name">{entry.name}</span>
-                <span class="lb-hours">{entry.hours}h</span>
+                <span class="lb-hours">{Math.round(entry.hours * 10) / 10}h</span>
               </div>
             {/each}
           {/if}
@@ -2039,6 +2099,119 @@
     {/if}
 
   </main>
+
+  <!-- Project detail overlay (rendered outside <main> so position:fixed is relative to viewport, not the filtered main element) -->
+  {#if detailProject}
+  <div class="detail-overlay" role="dialog" aria-modal="true">
+    <div class="detail-backdrop" onclick={closeProjectDetail} onkeydown={(e) => e.key === 'Escape' && closeProjectDetail()} role="button" tabindex="-1"></div>
+    <div class="detail-panel">
+      <button class="detail-close" onclick={closeProjectDetail} type="button" aria-label="Close">&times;</button>
+
+      <!-- Image gallery -->
+      <div class="detail-gallery">
+        {#if detailProject.screenshot1Url || detailProject.screenshot2Url}
+          {@const screenshots = [detailProject.screenshot1Url, detailProject.screenshot2Url].filter(Boolean) as string[]}
+          <div class="detail-img-wrap">
+            <img
+              class="detail-img"
+              src={screenshots[detailActiveImg] ?? screenshots[0]}
+              alt="{detailProject.name} screenshot {detailActiveImg + 1}"
+            />
+            {#if screenshots.length > 1}
+              <button class="detail-arrow detail-arrow-left" onclick={() => detailActiveImg = detailActiveImg === 0 ? screenshots.length - 1 : detailActiveImg - 1} type="button" aria-label="Previous screenshot">&#8249;</button>
+              <button class="detail-arrow detail-arrow-right" onclick={() => detailActiveImg = (detailActiveImg + 1) % screenshots.length} type="button" aria-label="Next screenshot">&#8250;</button>
+              <div class="detail-img-dots">
+                {#each screenshots as _, i}
+                  <span class="detail-dot" class:detail-dot-active={detailActiveImg === i}></span>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {:else}
+          <div class="detail-img-wrap detail-no-img">
+            <span>No screenshots</span>
+          </div>
+        {/if}
+      </div>
+
+      <!-- Project info -->
+      <div class="detail-info">
+        <div class="detail-header">
+          <h2 class="detail-name">{detailProject.name}</h2>
+          <span class="detail-type">{detailProject.projectType}</span>
+        </div>
+        <p class="detail-builder">by {detailProject.builderName}</p>
+        {#if detailProject.hours > 0}
+          <p class="detail-hours">{detailProject.hours.toFixed(1)} hours</p>
+        {/if}
+        <p class="detail-desc">{detailProject.description}</p>
+
+        <!-- Chunky action buttons -->
+        <div class="detail-actions">
+          {#if detailProject.demoUrl}
+            <a href={detailProject.demoUrl} target="_blank" rel="noopener noreferrer" class="detail-btn detail-btn-demo">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+              View Demo
+            </a>
+          {/if}
+          {#if detailProject.codeUrl}
+            <a href={detailProject.codeUrl} target="_blank" rel="noopener noreferrer" class="detail-btn detail-btn-code">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              Source Code
+            </a>
+          {/if}
+        </div>
+      </div>
+
+      <!-- Comments -->
+      <div class="detail-comments">
+        <h3 class="detail-comments-title">Comments</h3>
+
+        <div class="detail-comment-form">
+          <textarea
+            class="detail-comment-input"
+            bind:value={detailCommentText}
+            placeholder="Leave a comment..."
+            maxlength="500"
+            rows="3"
+          ></textarea>
+          <div class="detail-comment-form-footer">
+            <span class="detail-comment-charcount">{detailCommentText.length}/500</span>
+            <button
+              class="detail-comment-submit"
+              onclick={submitComment}
+              disabled={detailCommentSubmitting || detailCommentText.trim().length === 0}
+              type="button"
+            >
+              {detailCommentSubmitting ? 'Posting...' : 'Post'}
+            </button>
+          </div>
+        </div>
+
+        {#if detailCommentsLoading}
+          <p class="detail-comments-loading">Loading comments...</p>
+        {:else if detailComments.length === 0}
+          <p class="detail-comments-empty">No comments yet. Be the first!</p>
+        {:else}
+          <div class="detail-comments-list">
+            {#each detailComments as comment}
+              <div class="detail-comment">
+                <div class="detail-comment-header">
+                  <span class="detail-comment-author">{comment.authorName}</span>
+                  <span class="detail-comment-date">{new Date(comment.createdAt).toLocaleDateString()}</span>
+                  {#if comment.authorId === data.user.uid || detailProject.ownerId === data.user.uid || data.role}
+                    <button class="detail-comment-delete" onclick={() => deleteComment(comment.id)} type="button" title="Delete comment">&times;</button>
+                  {/if}
+                </div>
+                <p class="detail-comment-body">{comment.body}</p>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    </div>
+  </div>
+  {/if}
 </div>
 
 <style>
@@ -2067,6 +2240,7 @@
     margin: 0;
     padding: 0;
     background: #4b4840;
+    overflow-x: hidden;
   }
 
   /* ── layout ──────────────────────────────────────── */
@@ -3482,6 +3656,249 @@
     padding: 10px 18px;
     flex-shrink: 0;
     clip-path: polygon(0% 3%, 2% 0%, 98% 1%, 100% 4%, 99% 96%, 97% 100%, 3% 99%, 0% 95%);
+  }
+
+  .shop-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+  }
+
+  .suggestions-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #4b4840;
+    color: #e6f4fe;
+    border: 2px solid #1a1a1a;
+    padding: 10px 16px;
+    font-family: "Stone Breaker", "Courier New", monospace;
+    font-size: 14px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+    box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
+  }
+  .suggestions-btn:hover {
+    background: #6c6659;
+    transform: translate(-1px, -1px);
+    box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.4);
+  }
+  .suggestions-btn:active {
+    transform: translate(1px, 1px);
+    box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.4);
+  }
+  .suggestions-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .suggestions-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .suggestions-modal {
+    background: #cbc1ae;
+    border: 2px solid #1a1a1a;
+    box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.4);
+    width: 100%;
+    max-width: 600px;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 28px 28px 24px;
+    position: relative;
+    color: #4b4840;
+  }
+
+  .suggestions-close {
+    position: absolute;
+    top: 12px;
+    right: 14px;
+    background: transparent;
+    border: none;
+    font-size: 28px;
+    line-height: 1;
+    color: #4b4840;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+  .suggestions-close:hover { color: #c48382; }
+
+  .suggestions-title {
+    font-family: "Stone Breaker", "Courier New", monospace;
+    font-size: 28px;
+    margin: 0 0 4px;
+    color: #4b4840;
+  }
+  .suggestions-subtitle {
+    font-family: "Courier New", monospace;
+    font-size: 13px;
+    color: #6c6659;
+    margin: 0 0 20px;
+  }
+
+  .suggestions-new {
+    background: rgba(255, 255, 255, 0.4);
+    border: 2px solid #4b4840;
+    padding: 12px;
+    margin-bottom: 20px;
+  }
+  .suggestions-input {
+    width: 100%;
+    min-height: 60px;
+    background: #fff;
+    border: 1px solid #6c6659;
+    padding: 8px 10px;
+    font-family: "Courier New", monospace;
+    font-size: 14px;
+    color: #4b4840;
+    resize: vertical;
+    box-sizing: border-box;
+  }
+  .suggestions-input:focus {
+    outline: 2px solid #93b4cd;
+    outline-offset: 1px;
+  }
+  .suggestions-new-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+  }
+  .suggestions-counter {
+    font-family: "Courier New", monospace;
+    font-size: 11px;
+    color: #6c6659;
+  }
+  .suggestions-submit {
+    background: #5a9e6f;
+    color: #fff;
+    border: 2px solid #1a1a1a;
+    padding: 8px 18px;
+    font-family: "Stone Breaker", "Courier New", monospace;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.3);
+  }
+  .suggestions-submit:hover:not(:disabled) {
+    background: #6cb482;
+  }
+  .suggestions-submit:disabled {
+    background: #7f796d;
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+  .suggestions-error {
+    color: #c48382;
+    font-family: "Courier New", monospace;
+    font-size: 13px;
+    margin: 8px 0 0;
+  }
+
+  .suggestions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .suggestions-empty {
+    text-align: center;
+    color: #6c6659;
+    font-family: "Courier New", monospace;
+    padding: 24px 0;
+  }
+
+  .suggestion-row {
+    display: flex;
+    align-items: stretch;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid #6c6659;
+    padding: 10px 12px;
+  }
+
+  .suggestion-vote {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-width: 56px;
+    background: #fff;
+    border: 2px solid #6c6659;
+    color: #4b4840;
+    padding: 6px 8px;
+    cursor: pointer;
+    font-family: "Stone Breaker", "Courier New", monospace;
+    transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.1s;
+  }
+  .suggestion-vote svg { width: 16px; height: 16px; }
+  .suggestion-vote-count { font-size: 16px; line-height: 1; }
+  .suggestion-vote:hover {
+    background: #e6f4fe;
+    border-color: #4b4840;
+  }
+  .suggestion-vote.voted {
+    background: #5a9e6f;
+    border-color: #1a1a1a;
+    color: #fff;
+  }
+  .suggestion-vote.voted:hover {
+    background: #6cb482;
+  }
+
+  .suggestion-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
+  }
+  .suggestion-text {
+    margin: 0;
+    font-family: "Courier New", monospace;
+    font-size: 14px;
+    color: #4b4840;
+    word-break: break-word;
+  }
+  .suggestion-meta {
+    margin: 0;
+    font-family: "Courier New", monospace;
+    font-size: 11px;
+    color: #6c6659;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .suggestion-delete {
+    background: transparent;
+    border: none;
+    color: #c48382;
+    cursor: pointer;
+    font-family: "Courier New", monospace;
+    font-size: 11px;
+    text-decoration: underline;
+    padding: 0;
+  }
+  .suggestion-delete:hover { color: #a05c5b; }
+
+  @media (max-width: 480px) {
+    .shop-header-actions {
+      gap: 8px;
+    }
+    .suggestions-btn span { display: none; }
+    .suggestions-btn { padding: 10px; }
   }
 
   .pipe-img {

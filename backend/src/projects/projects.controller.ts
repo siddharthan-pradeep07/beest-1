@@ -47,12 +47,13 @@ export class ProjectsController {
       .flatMap((p) => p.hackatimeProjectName ?? [])
       .filter((n): n is string => !!n);
 
-    const { hours, perProject } = await this.hackatimeService.getHoursForProjects(
+    const { perProject } = await this.hackatimeService.getHoursForProjects(
       user.sub,
       [...new Set(linkedNames)],
     );
 
     const byStatus: Record<string, number> = {};
+    let displayHours = 0;
     for (const p of projects) {
       const names = p.hackatimeProjectName ?? [];
       const status = p.status ?? 'unshipped';
@@ -61,30 +62,33 @@ export class ProjectsController {
       for (const name of names) {
         if (perProject[name]) currentHours += perProject[name];
       }
-      if (currentHours <= 0) continue;
 
-      // overrideHours is the hours locked in at the last approval (user-facing, drives pipes).
-      // Anything beyond that is post-approval work that hasn't been approved yet.
-      // When a project is in changes_needed, any prior approval has been revoked
-      // (pipes are clawed back in admin.service.ts#reviewProject), so those hours
-      // must not count as approved — they belong to the changes_needed bucket.
-      const approvedCountsTowardApproved =
-        status === 'approved' || status === 'unreviewed';
-      const approvedSoFar = approvedCountsTowardApproved
-        ? Math.min(p.overrideHours ?? 0, currentHours)
-        : 0;
-      const remainder = Math.max(0, currentHours - approvedSoFar);
-
-      if (approvedSoFar > 0) {
-        byStatus['approved'] = (byStatus['approved'] ?? 0) + approvedSoFar;
+      // Earned hours = the hours the user has been credited pipes for. These are locked
+      // in regardless of Hackatime's current state (renames, deletions, re-syncs). A
+      // direct approved → changes_needed clears overrideHours/pipesGranted; the
+      // unreviewed → changes_needed path keeps both, so pipes_granted > 0 is the sole
+      // source of truth for "this hours total has been approved."
+      const earnedHours = (p.pipesGranted ?? 0) > 0 ? (p.overrideHours ?? 0) : 0;
+      if (earnedHours > 0) {
+        byStatus['approved'] = (byStatus['approved'] ?? 0) + earnedHours;
+        displayHours += earnedHours;
       }
-      if (remainder > 0) {
-        const bucket = status === 'approved' ? 'unshipped' : status;
-        byStatus[bucket] = (byStatus[bucket] ?? 0) + remainder;
+
+      // Hackatime hours beyond what's already been earned belong to the project's
+      // current review state. For approved projects we hide them — they don't become
+      // user-visible until the user resubmits (status flips to 'unreviewed'), at which
+      // point this branch surfaces them in the right bucket. Showing them as
+      // 'unshipped' while the project is approved was misleading.
+      if (status !== 'approved') {
+        const remainder = Math.max(0, currentHours - earnedHours);
+        if (remainder > 0) {
+          byStatus[status] = (byStatus[status] ?? 0) + remainder;
+          displayHours += remainder;
+        }
       }
     }
 
-    return { hours, byStatus };
+    return { hours: Math.round(displayHours * 10) / 10, byStatus };
   }
 
   @Throttle({ default: { limit: 10, ttl: 60000 } })

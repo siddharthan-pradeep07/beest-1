@@ -373,7 +373,23 @@ export class AdminService {
     // 1. Update project status and hours
     project.status = status;
     if (overrideHours !== null && overrideHours !== undefined) {
-      project.overrideHours = Math.round(overrideHours * 10) / 10;
+      const proposed = Math.round(overrideHours * 10) / 10;
+      // overrideHours is the cumulative TOTAL approved hours for this project,
+      // not the delta since last approval. If a reviewer sets it below what's
+      // already been paid out in pipes, the bar would silently desync (it'd
+      // show 0 hours while the user keeps the pipes — see issue from sadrita,
+      // 2026-04-29). Reject so the reviewer can correct the form. To genuinely
+      // clawback hours, route through changes_needed first.
+      if (
+        status === 'approved' &&
+        (project.pipesGranted ?? 0) > 0 &&
+        proposed < (project.pipesGranted ?? 0)
+      ) {
+        throw new BadRequestException(
+          `Cannot reduce approved hours to ${proposed} — ${project.pipesGranted} pipes have already been granted on this project. Enter the cumulative total approved hours, or send to "changes needed" first to claw back pipes.`,
+        );
+      }
+      project.overrideHours = proposed;
     }
     if (internalHours !== null && internalHours !== undefined) {
       project.internalHours = Math.round(internalHours * 10) / 10;
@@ -405,16 +421,29 @@ export class AdminService {
       }
     }
 
-    // 2b. Grant pipes as delta on this submission
-    //    Pipes granted = overrideHours for THIS submission minus what was already granted on previous submissions.
-    //    The project's pipesGranted tracks the cumulative total.
+    // 2b. Grant pipes as delta on this submission.
+    //    Target = floor(sum of override_hours across the user's earned projects), so that
+    //    fractional hours accumulate across approvals (e.g. 38.6 + 38.6 = 77.2 → 77 pipes,
+    //    not floor(38.6) + floor(38.6) = 76). "Earned" = currently approved, OR previously
+    //    approved and now awaiting re-review (pipes_granted > 0 on a non-approved row).
+    //    Delta is target − sum(pipes_granted) across all the user's projects.
     if (status === 'approved' && project.overrideHours != null && project.overrideHours > 0) {
-      const totalPipesTarget = Math.floor(project.overrideHours);
-      const previouslyGranted = project.pipesGranted ?? 0;
+      const totals = await this.projectRepo
+        .createQueryBuilder('p')
+        .select('COALESCE(SUM(p.override_hours), 0)', 'earnedHours')
+        .addSelect('COALESCE(SUM(p.pipes_granted), 0)', 'granted')
+        .where('p.user_id = :uid', { uid: project.userId })
+        .andWhere(
+          `(p.status = 'approved' OR (p.status <> 'approved' AND p.pipes_granted > 0))`,
+        )
+        .getRawOne<{ earnedHours: string; granted: string }>();
+
+      const totalPipesTarget = Math.floor(Number(totals?.earnedHours ?? 0));
+      const previouslyGranted = Number(totals?.granted ?? 0);
       const delta = totalPipesTarget - previouslyGranted;
       if (delta > 0) {
         await this.userRepo.increment({ id: project.userId }, 'pipes', delta);
-        project.pipesGranted = totalPipesTarget;
+        project.pipesGranted = (project.pipesGranted ?? 0) + delta;
         await this.projectRepo.save(project);
 
         // Track what this submission granted
