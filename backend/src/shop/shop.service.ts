@@ -81,7 +81,16 @@ export class ShopService {
   }
 
   async createSuggestion(userId: string, text: string) {
-    const clean = text.replace(/\0/g, '').trim().slice(0, 200);
+    // Strip NUL + HTML tag delimiters as defense-in-depth (current render path
+    // auto-escapes via Svelte, but a future {@html} or out-of-band surface —
+    // admin panel, email, CSV — would otherwise execute stored payloads).
+    // Collapse whitespace runs to keep the layout sane.
+    const clean = text
+      .replace(/\0/g, '')
+      .replace(/[<>]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 200);
     if (!clean) {
       throw new BadRequestException('Suggestion cannot be empty');
     }

@@ -2240,6 +2240,7 @@
     margin: 0;
     padding: 0;
     background: #4b4840;
+    overflow-x: hidden;
   }
 
   /* ── layout ──────────────────────────────────────── */
