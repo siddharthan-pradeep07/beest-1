@@ -8,6 +8,8 @@
  #cbc1ae - Beige
  #809fb7 - Light Steel Blue
  #e6f4fe - Light Cyan
+ #9a9285 - Warm Granite (devlogs accent)
+ #52504a - Basalt       (devlogs section bg)
  #ffffff - White
 -->
 
@@ -99,6 +101,37 @@
   let fulfillmentUpdates = $state<FulfillmentUpdateType[]>([]);
   let fulfillmentLoading = $state(false);
   let unreadCount = $state(0);
+
+  // Devlogs state
+  type DevlogType = { id: string; projectId: string | null; title: string; text: string; imageUrls: string[]; createdAt: string };
+  let devlogs = $state<DevlogType[]>([]);
+  let devlogsLoading = $state(false);
+  let devlogFormOpen = $state(false);
+  let devlogLightbox = $state<string | null>(null);
+
+  // Show the create form upfront when there are no devlogs yet; otherwise
+  // keep it tucked behind a "New devlog" button until the user opens it.
+  let devlogFormVisible = $derived(devlogs.length === 0 || devlogFormOpen);
+
+  function openDevlogLightbox(url: string) {
+    devlogLightbox = url;
+  }
+  function closeDevlogLightbox() {
+    devlogLightbox = null;
+  }
+  function onDevlogLightboxKey(e: KeyboardEvent) {
+    if (e.key === 'Escape') closeDevlogLightbox();
+  }
+  let devlogTitle = $state('');
+  let devlogText = $state('');
+  let devlogProjectId = $state<string>('');
+  let devlogFiles = $state<(File | null)[]>([null, null, null, null]);
+  let devlogPreviews = $state<string[]>(['', '', '', '']);
+  let devlogSubmitting = $state(false);
+  let devlogError = $state('');
+  const DEVLOG_TITLE_MAX = 120;
+  const DEVLOG_TEXT_MAX = 5000;
+  const DEVLOG_MAX_IMAGES = 4;
   let nicknameInput = $state(data.user.nickname ?? '');
   let nicknameSaving = $state(false);
   let genderSaving = $state(false);
@@ -831,6 +864,7 @@
     { id: 'leaderboard', label: 'Leaderboard' },
     { id: 'faq', label: 'FAQ' },
     { id: 'me', label: 'Me' },
+    { id: 'devlogs', label: 'Devlogs' },
     { id: 'tutorial', label: 'Tutorial' }
   ];
 
@@ -840,6 +874,7 @@
     activeSection = id;
     if (id === 'shop') { fetchShopItems(); fetchPipes(); }
     if (id === 'me') { fetchFulfillmentUpdates(); markFulfillmentRead(); }
+    if (id === 'devlogs') { fetchDevlogs(); }
   }
 
   async function fetchPipes() {
@@ -888,6 +923,116 @@
       if (res.ok) fulfillmentUpdates = await res.json();
     } catch { /* silent */ }
     fulfillmentLoading = false;
+  }
+
+  /* ────────────────  Devlogs  ──────────────── */
+
+  async function fetchDevlogs() {
+    devlogsLoading = true;
+    try {
+      const res = await fetch('/api/devlogs');
+      if (res.ok) devlogs = await res.json();
+    } catch { /* silent */ }
+    devlogsLoading = false;
+  }
+
+  function handleDevlogImage(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
+      devlogError = 'Image must be a PNG, JPEG, GIF, or WebP';
+      input.value = '';
+      return;
+    }
+    const idx = devlogPreviews.findIndex((p) => p === '');
+    if (idx === -1) {
+      devlogError = `Up to ${DEVLOG_MAX_IMAGES} images per devlog`;
+      input.value = '';
+      return;
+    }
+    devlogFiles[idx] = file;
+    devlogPreviews[idx] = URL.createObjectURL(file);
+    devlogError = '';
+    input.value = '';
+  }
+
+  function removeDevlogImage(idx: number) {
+    devlogFiles[idx] = null;
+    devlogPreviews[idx] = '';
+    // Compact the arrays so newly added images fill from the start.
+    devlogFiles = [...devlogFiles.filter((f) => f !== null), null, null, null, null].slice(0, DEVLOG_MAX_IMAGES);
+    devlogPreviews = [...devlogPreviews.filter((p) => p !== ''), '', '', '', ''].slice(0, DEVLOG_MAX_IMAGES);
+  }
+
+  function resetDevlogForm() {
+    devlogTitle = '';
+    devlogText = '';
+    devlogProjectId = '';
+    devlogFiles = [null, null, null, null];
+    devlogPreviews = ['', '', '', ''];
+    devlogError = '';
+  }
+
+  async function submitDevlog() {
+    if (devlogSubmitting) return;
+    const trimmedTitle = devlogTitle.trim();
+    const trimmed = devlogText.trim();
+    if (!trimmedTitle) {
+      devlogError = 'Give your devlog a short title';
+      return;
+    }
+    if (!trimmed) {
+      devlogError = 'Write something for your devlog first';
+      return;
+    }
+    if (!devlogProjectId) {
+      devlogError = 'Pick the project this devlog is for';
+      return;
+    }
+    devlogSubmitting = true;
+    devlogError = '';
+    try {
+      const images: string[] = [];
+      for (const file of devlogFiles) {
+        if (file) images.push(await fileToDataUri(file));
+      }
+      const res = await fetch('/api/devlogs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: trimmedTitle,
+          text: trimmed,
+          projectId: devlogProjectId,
+          images,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        devlogError = data?.message || 'Failed to post devlog';
+      } else {
+        resetDevlogForm();
+        devlogFormOpen = false;
+        await fetchDevlogs();
+      }
+    } catch {
+      devlogError = 'Network error. Try again.';
+    }
+    devlogSubmitting = false;
+  }
+
+  async function deleteDevlog(id: string) {
+    if (!confirm('Delete this devlog?')) return;
+    try {
+      const res = await fetch(`/api/devlogs/${id}`, { method: 'DELETE' });
+      if (res.ok) devlogs = devlogs.filter((d) => d.id !== id);
+    } catch { /* silent */ }
+  }
+
+  function devlogProjectName(id: string | null): string | null {
+    if (!id) return null;
+    const p = projects.find((p) => p.id === id);
+    return p?.name ?? null;
   }
 
   async function markFulfillmentRead() {
@@ -1256,6 +1401,8 @@
               <option value="python">Python</option>
               <option value="android">Android Playable</option>
               <option value="ios">iOS Playable</option>
+              <option value="hardware">Hardware</option>
+              <option value="cad">CAD Models</option>
               <option value="other">Other / Not Sure</option>
             </select>
           </div>
@@ -1545,7 +1692,10 @@
           {/if}
         </div>
         {#if projects.length > 0}
-          <button class="action-btn new-project-btn" onclick={openCreateProject}>+ New Project</button>
+          <div class="project-actions-row">
+            <button class="action-btn new-project-btn" onclick={openCreateProject}>+ New Project</button>
+            <a class="action-btn guide-btn" href="/guide">Shipping Guide</a>
+          </div>
         {/if}
 
         <div class="bottom-row">
@@ -1967,6 +2117,127 @@
     </section>
     {/if}
 
+    {#if activeSection === 'devlogs'}
+    <section class="section section-devlogs">
+      <div class="section-inner">
+        <h2 class="section-title">Devlogs</h2>
+        <p class="devlogs-blurb">Devlogs are <strong>mandatory for hardware projects</strong> and optional for software.</p>
+
+        {#if !devlogFormVisible}
+          <button class="devlog-new-btn" onclick={() => { devlogFormOpen = true; }}>+ New devlog</button>
+        {/if}
+
+        {#if devlogFormVisible}
+        <div class="devlog-create">
+          <div class="devlog-form">
+            <div class="devlog-field">
+              <label class="form-label" for="devlog-project">Project <span class="required">*</span></label>
+              <select id="devlog-project" class="form-input form-select devlog-select" bind:value={devlogProjectId}>
+                <option value="" disabled>{projects.length === 0 ? 'Create a project first' : 'Select a project to link this devlog to'}</option>
+                {#each projects as p}
+                  <option value={p.id}>{p.name}</option>
+                {/each}
+              </select>
+            </div>
+
+            <div class="devlog-field">
+              <label class="form-label" for="devlog-title">Title <span class="required">*</span></label>
+              <input
+                id="devlog-title"
+                type="text"
+                class="form-input devlog-input"
+                maxlength={DEVLOG_TITLE_MAX}
+                placeholder="e.g. Soldered the headers and got the OLED working"
+                bind:value={devlogTitle}
+              />
+              <div class="form-caption-row">
+                <span class="form-charcount" class:over={devlogTitle.length >= DEVLOG_TITLE_MAX}>{devlogTitle.length}/{DEVLOG_TITLE_MAX}</span>
+              </div>
+            </div>
+
+            <div class="devlog-field">
+              <label class="form-label" for="devlog-text">What did you work on?</label>
+              <textarea
+                id="devlog-text"
+                class="form-input form-textarea devlog-textarea"
+                maxlength={DEVLOG_TEXT_MAX}
+                placeholder={"Wired up the IMU, debugged the I2C addressing for an hour, ended up resoldering pin 4..."}
+                bind:value={devlogText}
+              ></textarea>
+              <div class="form-caption-row">
+                <span class="form-charcount" class:over={devlogText.length >= DEVLOG_TEXT_MAX}>{devlogText.length}/{DEVLOG_TEXT_MAX}</span>
+              </div>
+            </div>
+
+            {#if devlogError}
+              <p class="form-error">{devlogError}</p>
+            {/if}
+
+            <button class="btn-primary devlog-submit" onclick={submitDevlog} disabled={devlogSubmitting || !devlogTitle.trim() || !devlogText.trim() || !devlogProjectId}>
+              {devlogSubmitting ? 'Posting…' : 'Post devlog'}
+            </button>
+          </div>
+
+          <aside class="devlog-images-card" aria-label="Devlog images">
+            <span class="form-label devlog-images-label">Images</span>
+            <div class="devlog-images-grid">
+              {#each Array(DEVLOG_MAX_IMAGES) as _, i (i)}
+                {#if devlogPreviews[i]}
+                  <div class="devlog-image-thumb">
+                    <img src={devlogPreviews[i]} alt="Attachment {i + 1}" />
+                    <button type="button" class="devlog-image-remove" onclick={() => removeDevlogImage(i)} aria-label="Remove image">&times;</button>
+                  </div>
+                {:else if i === devlogPreviews.findIndex((p) => p === '')}
+                  <label class="devlog-image-add" for="devlog-image" title="Add image">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                  </label>
+                {:else}
+                  <div class="devlog-image-empty" aria-hidden="true"></div>
+                {/if}
+              {/each}
+            </div>
+            <input id="devlog-image" type="file" accept="image/*" class="form-file-hidden" onchange={handleDevlogImage} />
+            <p class="devlog-images-hint">Up to {DEVLOG_MAX_IMAGES} images, 8 MB each.</p>
+          </aside>
+        </div>
+        {#if devlogs.length > 0}
+          <button type="button" class="devlog-cancel-btn" onclick={() => { devlogFormOpen = false; resetDevlogForm(); }}>Cancel</button>
+        {/if}
+        {/if}
+
+        <div class="devlogs-list">
+          {#if devlogsLoading && devlogs.length === 0}
+            <p class="devlog-empty">Loading…</p>
+          {:else if devlogs.length > 0}
+            {#each devlogs as dl (dl.id)}
+              <article class="devlog-card">
+                <header class="devlog-card-header">
+                  <span class="devlog-card-project">{devlogProjectName(dl.projectId) ?? 'Project removed'}</span>
+                  <span class="devlog-card-time">{new Date(dl.createdAt).toLocaleString()}</span>
+                  <button class="devlog-card-delete" onclick={() => deleteDevlog(dl.id)} title="Delete devlog">×</button>
+                </header>
+                <h3 class="devlog-card-title">{dl.title}</h3>
+                <p class="devlog-card-text">{dl.text}</p>
+                {#if dl.imageUrls && dl.imageUrls.length > 0}
+                  <div class="devlog-card-images">
+                    {#each dl.imageUrls as url}
+                      <button type="button" class="devlog-card-image-btn" onclick={() => openDevlogLightbox(url)}>
+                        <img src={url} alt="Devlog attachment" loading="lazy" />
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+              </article>
+            {/each}
+          {/if}
+        </div>
+      </div>
+    </section>
+    {/if}
+
     {#if activeSection === 'me'}
     <section class="section section-settings">
       <div class="section-inner">
@@ -2214,6 +2485,17 @@
   {/if}
 </div>
 
+<svelte:window onkeydown={onDevlogLightboxKey} />
+
+{#if devlogLightbox}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="devlog-lightbox" onclick={closeDevlogLightbox} role="dialog" aria-modal="true" aria-label="Devlog image">
+    <img src={devlogLightbox} alt="Devlog attachment full size" onclick={(e) => e.stopPropagation()} />
+    <button type="button" class="devlog-lightbox-close" onclick={closeDevlogLightbox} aria-label="Close">&times;</button>
+  </div>
+{/if}
+
 <style>
   @font-face {
     font-family: "Stone Breaker";
@@ -2406,7 +2688,7 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 3px;
   }
 
   .nav-btn {
@@ -2414,15 +2696,15 @@
     align-items: center;
     gap: 12px;
     width: 100%;
-    padding: 8px 14px;
+    padding: 5px 12px;
     border: 3px solid transparent;
     border-bottom: 6px solid transparent;
     border-radius: 6px;
     background: transparent;
     color: #cbc1ae;
     font-family: "Stone Breaker", "Courier New", monospace;
-    font-size: 19px;
-    letter-spacing: 0.04em;
+    font-size: 17px;
+    letter-spacing: 0.03em;
     text-align: left;
     cursor: inherit;
     transition: background 150ms ease, color 150ms ease, transform 0.1s ease, border-bottom-width 0.1s ease, border-color 150ms ease;
@@ -2527,6 +2809,11 @@
 
   .tile-loaded .section-explore::after {
     background-image: url('/images/tile3.webp');
+  }
+
+  .tile-loaded .section-devlogs::after {
+    background-image: url('/images/tile2.webp');
+    opacity: 0.18;
   }
 
   .section-inner {
@@ -3614,6 +3901,408 @@
     border-radius: 6px;
     max-width: 1500px;
     box-sizing: border-box;
+  }
+
+  /* ── Devlogs section ───────────────────────── */
+  .section-devlogs {
+    background: #52504a;
+    padding-top: 48px;
+  }
+
+  .devlogs-blurb {
+    color: #cbc1ae;
+    font-family: "Courier New", monospace;
+    font-size: 14px;
+    margin: 0 0 18px;
+    max-width: 700px;
+    opacity: 0.85;
+  }
+
+  .devlog-new-btn {
+    display: inline-block;
+    width: 100%;
+    max-width: 720px;
+    box-sizing: border-box;
+    margin-bottom: 18px;
+    padding: 10px 22px;
+    background: #9a9285;
+    color: #2e2a26;
+    font-family: "Stone Breaker", "Courier New", monospace;
+    font-size: 16px;
+    border: 2px solid #2e2a26;
+    border-radius: 6px;
+    cursor: pointer;
+    box-shadow: 0 3px 0 #2e2a26;
+    transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.15s;
+  }
+
+  .devlog-new-btn:hover {
+    background: #aea597;
+  }
+
+  .devlog-new-btn:active {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 #2e2a26;
+  }
+
+  .devlog-cancel-btn {
+    display: inline-block;
+    margin: 8px 0 18px;
+    padding: 6px 14px;
+    background: transparent;
+    color: #cbc1ae;
+    font-family: "Courier New", monospace;
+    font-size: 13px;
+    border: 1px solid rgba(203, 193, 174, 0.35);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .devlog-cancel-btn:hover {
+    background: rgba(203, 193, 174, 0.1);
+    border-color: #cbc1ae;
+  }
+
+  /* Two-pane create row: form card on the left, separate images card on the right */
+  .devlog-create {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    margin-bottom: 22px;
+    max-width: 720px;
+  }
+
+  .devlog-form,
+  .devlog-images-card {
+    background: #3a3530;
+    border: 2px solid #2e2a26;
+    border-radius: 8px;
+    padding: 14px;
+    box-shadow:
+      0 4px 8px rgba(0, 0, 0, 0.3),
+      0 8px 20px rgba(0, 0, 0, 0.25);
+  }
+
+  .devlog-form {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .devlog-images-card {
+    flex: 0 0 auto;
+    width: 188px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .devlog-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .devlog-input,
+  .devlog-textarea,
+  .devlog-select {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .devlog-textarea {
+    min-height: 130px;
+    resize: vertical;
+    line-height: 1.45;
+  }
+
+  .devlog-images-label {
+    margin: 0;
+  }
+
+  .devlog-images-hint {
+    margin: 2px 0 0;
+    font-family: "Courier New", monospace;
+    font-size: 11px;
+    color: #7f796d;
+    line-height: 1.4;
+  }
+
+  .devlog-images-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 70px);
+    grid-template-rows: repeat(2, 70px);
+    gap: 6px;
+  }
+
+  @media (max-width: 720px) {
+    .devlog-create {
+      flex-direction: column;
+    }
+    .devlog-images-card {
+      width: 100%;
+    }
+    .devlog-images-grid {
+      grid-template-columns: repeat(4, 70px);
+      grid-template-rows: 70px;
+    }
+  }
+
+  .devlog-image-empty {
+    width: 70px;
+    height: 70px;
+    border-radius: 6px;
+    border: 1px dashed rgba(203, 193, 174, 0.18);
+    background: rgba(0, 0, 0, 0.15);
+  }
+
+  .devlog-image-add {
+    width: 70px;
+    height: 70px;
+    border-radius: 6px;
+    border: 1px dashed rgba(154, 146, 133, 0.55);
+    background: rgba(154, 146, 133, 0.1);
+    color: #c4bcae;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .devlog-image-add:hover {
+    background: rgba(154, 146, 133, 0.22);
+    border-color: #9a9285;
+  }
+
+  .devlog-image-add svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .devlog-image-thumb {
+    position: relative;
+    width: 70px;
+    height: 70px;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #2e2a26;
+    background: #2a2620;
+  }
+
+  .devlog-image-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .devlog-image-remove {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 0;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    font-size: 14px;
+    line-height: 22px;
+    text-align: center;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .devlog-submit {
+    display: inline-block;
+    margin-top: 14px;
+    padding: 10px 22px;
+    background: #9a9285;
+    color: #2e2a26;
+    font-family: "Stone Breaker", "Courier New", monospace;
+    font-size: 17px;
+    border: 2px solid #2e2a26;
+    border-radius: 6px;
+    cursor: pointer;
+    box-shadow: 0 3px 0 #2e2a26;
+    transition: transform 0.1s ease, box-shadow 0.1s ease, opacity 0.15s;
+  }
+
+  .devlog-submit:hover:not(:disabled) {
+    background: #aea597;
+  }
+
+  .devlog-submit:active:not(:disabled) {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 #2e2a26;
+  }
+
+  .devlog-submit:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .devlogs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 720px;
+  }
+
+  .devlog-empty {
+    color: #cbc1ae;
+    opacity: 0.7;
+    font-family: "Courier New", monospace;
+    font-size: 14px;
+  }
+
+  .devlog-card {
+    background: #3a3530;
+    border: 2px solid #2e2a26;
+    border-left: 4px solid #9a9285;
+    border-radius: 8px;
+    padding: 14px 16px;
+    box-shadow:
+      0 3px 6px rgba(0, 0, 0, 0.25),
+      0 6px 14px rgba(0, 0, 0, 0.18);
+  }
+
+  .devlog-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-family: "Courier New", monospace;
+    font-size: 12px;
+    color: #cbc1ae;
+  }
+
+  .devlog-card-project {
+    background: rgba(154, 146, 133, 0.22);
+    color: #d6cfc1;
+    border: 1px solid #9a9285;
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .devlog-card-time {
+    color: #7f796d;
+    margin-left: auto;
+  }
+
+  .devlog-card-delete {
+    background: transparent;
+    border: 0;
+    color: #7f796d;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+    transition: color 0.15s;
+  }
+
+  .devlog-card-delete:hover {
+    color: #c48382;
+  }
+
+  .devlog-card-title {
+    margin: 0 0 6px;
+    font-family: "Stone Breaker", "Courier New", monospace;
+    font-size: 18px;
+    color: #e6f4fe;
+    letter-spacing: 0.02em;
+    line-height: 1.25;
+    text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.3);
+  }
+
+  .devlog-card-text {
+    margin: 0;
+    color: #e6e2da;
+    font-family: "Courier New", monospace;
+    font-size: 14px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .devlog-card-images {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .devlog-card-image-btn {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: zoom-in;
+    line-height: 0;
+  }
+
+  .devlog-card-images img {
+    width: 110px;
+    height: 110px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid #2e2a26;
+    display: block;
+    transition: transform 0.15s ease;
+  }
+
+  .devlog-card-image-btn:hover img {
+    transform: scale(1.04);
+  }
+
+  /* Lightbox */
+  .devlog-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(20, 18, 14, 0.88);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    cursor: zoom-out;
+    backdrop-filter: blur(4px);
+  }
+
+  .devlog-lightbox img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 6px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    cursor: default;
+  }
+
+  .devlog-lightbox-close {
+    position: absolute;
+    top: 18px;
+    right: 22px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 0;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-size: 26px;
+    line-height: 38px;
+    text-align: center;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .devlog-lightbox-close:hover {
+    background: rgba(0, 0, 0, 0.75);
   }
 
   /* ── shop ────────────────────────────────────────── */
@@ -4946,14 +5635,42 @@
   }
 
   .new-project-btn {
-    align-self: center;
     width: fit-content;
-    margin-top: 12px;
     flex-shrink: 0;
     font-family: "Sunny Mood", "Courier New", monospace;
     font-size: 17px;
     text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.3);
     padding: 8px 20px;
+  }
+
+  .project-actions-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 12px;
+  }
+
+  /* Match .new-project-btn's font, padding, and box exactly — only the colors
+     differ (plain white + black instead of red) so the two sit as twins. */
+  .guide-btn {
+    width: fit-content;
+    flex-shrink: 0;
+    font-family: "Sunny Mood", "Courier New", monospace;
+    font-size: 17px;
+    padding: 8px 20px;
+    text-decoration: none;
+    background: #ffffff;
+    color: #000000;
+    border: 3px solid #000000;
+    border-bottom: 8px solid #000000;
+    box-shadow: 4px 4px 0 #3a3832;
+    text-shadow: none;
+  }
+
+  .guide-btn:hover {
+    background: #f0ece4;
   }
 
   /* ── explore ─────────────────────────────────────── */

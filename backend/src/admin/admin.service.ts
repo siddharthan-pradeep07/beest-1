@@ -373,27 +373,35 @@ export class AdminService {
     // 1. Update project status and hours
     project.status = status;
     if (overrideHours !== null && overrideHours !== undefined) {
-      const proposed = Math.round(overrideHours * 10) / 10;
-      // overrideHours is the cumulative TOTAL approved hours for this project,
-      // not the delta since last approval. If a reviewer sets it below what's
-      // already been paid out in pipes, the bar would silently desync (it'd
-      // show 0 hours while the user keeps the pipes — see issue from sadrita,
-      // 2026-04-29). Reject so the reviewer can correct the form. To genuinely
-      // clawback hours, route through changes_needed first.
-      if (
-        status === 'approved' &&
-        (project.pipesGranted ?? 0) > 0 &&
-        proposed < (project.pipesGranted ?? 0)
-      ) {
-        throw new BadRequestException(
-          `Cannot reduce approved hours to ${proposed} — ${project.pipesGranted} pipes have already been granted on this project. Enter the cumulative total approved hours, or send to "changes needed" first to claw back pipes.`,
-        );
-      }
-      project.overrideHours = proposed;
+      project.overrideHours = Math.round(overrideHours * 10) / 10;
     }
     if (internalHours !== null && internalHours !== undefined) {
       project.internalHours = Math.round(internalHours * 10) / 10;
     }
+
+    // overrideHours is the cumulative TOTAL approved hours for this project,
+    // not a delta since the last approval. Validate the post-update value:
+    //   - status=approved + finalHours <= 0 silently zeroes pipes_granted and,
+    //     because the bar suppresses overflow on approved projects, makes the
+    //     user's hours appear to vanish (moaz, 2026-05-05).
+    //   - status=approved + finalHours < pipes_granted desyncs the bar from the
+    //     pipes already paid out (sadrita, 2026-04-29).
+    // To genuinely reduce a project's hours, route through changes_needed first
+    // (which claws back pipes), then re-approve.
+    if (status === 'approved') {
+      const finalHours = project.overrideHours ?? 0;
+      if (finalHours <= 0) {
+        throw new BadRequestException(
+          'Cannot approve a project at 0 hours. Enter the cumulative total approved hours, or use "changes needed" to reject without granting pipes.',
+        );
+      }
+      if (finalHours < (project.pipesGranted ?? 0)) {
+        throw new BadRequestException(
+          `Cannot reduce approved hours to ${finalHours} — ${project.pipesGranted} pipes have already been granted on this project. Enter the cumulative total approved hours, or send to "changes needed" first to claw back pipes.`,
+        );
+      }
+    }
+
     await this.projectRepo.save(project);
 
     // 2a. Handle rejection.

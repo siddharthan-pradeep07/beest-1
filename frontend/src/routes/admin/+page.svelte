@@ -132,6 +132,32 @@
 	}
 	let pastReviews = $state<ReviewRecord[]>([]);
 
+	type DevlogRecord = {
+		id: string;
+		projectId: string | null;
+		userId: string;
+		userName: string | null;
+		title: string;
+		text: string;
+		imageUrls: string[];
+		createdAt: string;
+	};
+	let projectDevlogs = $state<DevlogRecord[]>([]);
+	let devlogLightbox = $state<string | null>(null);
+	function openDevlogLightbox(url: string) { devlogLightbox = url; }
+	function closeDevlogLightbox() { devlogLightbox = null; }
+	function onDevlogLightboxKey(e: KeyboardEvent) { if (e.key === 'Escape') closeDevlogLightbox(); }
+
+	async function loadProjectDevlogs(projectId: string) {
+		try {
+			const res = await fetch(`/api/admin/projects/${projectId}/devlogs`);
+			if (res.ok) projectDevlogs = await res.json();
+			else projectDevlogs = [];
+		} catch {
+			projectDevlogs = [];
+		}
+	}
+
 	async function reviewProject(status: 'approved' | 'changes_needed' | 'ban') {
 		if (!expandedProjectId || reviewSubmitting) return;
 		reviewSubmitting = true;
@@ -240,6 +266,7 @@
 			hackatimeData = null;
 			userFeedback = '';
 		internalNote = '';
+			projectDevlogs = [];
 			return;
 		}
 		expandedProjectId = projectId;
@@ -250,9 +277,11 @@
 		overrideJustification = '';
 		lastAutoJustification = '';
 		pastReviews = [];
+		projectDevlogs = [];
 
 		const proj = allProjects.find(p => p.id === projectId);
 		loadReviews(projectId);
+		loadProjectDevlogs(projectId);
 		if (proj?.status === 'unreviewed' || proj?.status === 'approved') {
 			hackatimeLoading = true;
 			try {
@@ -1549,6 +1578,32 @@
 									</div>
 								{/if}
 
+								{#if projectDevlogs.length > 0}
+									<hr class="proj-divider" />
+									<h4 class="reviews-heading">Devlogs ({projectDevlogs.length})</h4>
+									<div class="devlogs-list">
+										{#each projectDevlogs as dl}
+											<div class="devlog-card">
+												<div class="devlog-card-header">
+													<span class="devlog-card-author">{dl.userName ?? 'Unknown'}</span>
+													<span class="devlog-card-date">{formatDate(dl.createdAt)}</span>
+												</div>
+												{#if dl.title}<h5 class="devlog-card-title">{dl.title}</h5>{/if}
+												<p class="devlog-card-text">{dl.text}</p>
+												{#if dl.imageUrls && dl.imageUrls.length > 0}
+													<div class="devlog-card-images">
+														{#each dl.imageUrls as url}
+															<button type="button" class="devlog-card-image-btn" onclick={() => openDevlogLightbox(url)}>
+																<img src={url} alt="Devlog attachment" loading="lazy" />
+															</button>
+														{/each}
+													</div>
+												{/if}
+											</div>
+										{/each}
+									</div>
+								{/if}
+
 								{#if pastReviews.length > 0}
 									<hr class="proj-divider" />
 									<h4 class="reviews-heading">Review History</h4>
@@ -1643,6 +1698,17 @@
 		{/if}
 	</main>
 </div>
+
+<svelte:window onkeydown={onDevlogLightboxKey} />
+
+{#if devlogLightbox}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="devlog-lightbox" onclick={closeDevlogLightbox} role="dialog" aria-modal="true" aria-label="Devlog image">
+		<img src={devlogLightbox} alt="Devlog attachment full size" onclick={(e) => e.stopPropagation()} />
+		<button type="button" class="devlog-lightbox-close" onclick={closeDevlogLightbox} aria-label="Close">&times;</button>
+	</div>
+{/if}
 
 <style>
 	.admin-shell {
@@ -2821,6 +2887,127 @@
 		border-radius: 4px;
 		padding: 0.3rem 0.5rem;
 		margin-top: 0.35rem;
+	}
+
+	.devlogs-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		margin-bottom: 0.5rem;
+	}
+
+	.devlog-card {
+		border: 1px solid #444;
+		border-left: 3px solid #93b4cd;
+		border-radius: 6px;
+		padding: 0.55rem 0.8rem;
+		background: #1e1e1e;
+	}
+
+	.devlog-card-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.3rem;
+		font-size: 0.75rem;
+	}
+
+	.devlog-card-author {
+		color: #ccc;
+		font-weight: 600;
+	}
+
+	.devlog-card-date {
+		color: #777;
+		margin-left: auto;
+	}
+
+	.devlog-card-title {
+		margin: 0 0 4px;
+		font-size: 0.95rem;
+		color: #e6f4fe;
+		font-weight: 600;
+		line-height: 1.3;
+	}
+
+	.devlog-card-text {
+		margin: 0;
+		font-size: 0.82rem;
+		color: #ddd;
+		white-space: pre-wrap;
+		line-height: 1.45;
+	}
+
+	.devlog-card-images {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+		margin-top: 0.5rem;
+	}
+
+	.devlog-card-image-btn {
+		padding: 0;
+		border: 0;
+		background: transparent;
+		cursor: zoom-in;
+		line-height: 0;
+	}
+
+	.devlog-card-images img {
+		width: 90px;
+		height: 90px;
+		object-fit: cover;
+		border-radius: 4px;
+		border: 1px solid #333;
+		display: block;
+		transition: transform 0.15s ease;
+	}
+
+	.devlog-card-image-btn:hover img {
+		transform: scale(1.04);
+	}
+
+	.devlog-lightbox {
+		position: fixed;
+		inset: 0;
+		z-index: 9999;
+		background: rgba(10, 10, 10, 0.9);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 32px;
+		cursor: zoom-out;
+		backdrop-filter: blur(4px);
+	}
+
+	.devlog-lightbox img {
+		max-width: 100%;
+		max-height: 100%;
+		object-fit: contain;
+		border-radius: 4px;
+		box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
+		cursor: default;
+	}
+
+	.devlog-lightbox-close {
+		position: absolute;
+		top: 18px;
+		right: 22px;
+		width: 40px;
+		height: 40px;
+		border-radius: 50%;
+		border: 0;
+		background: rgba(0, 0, 0, 0.6);
+		color: #fff;
+		font-size: 26px;
+		line-height: 38px;
+		text-align: center;
+		cursor: pointer;
+		padding: 0;
+	}
+
+	.devlog-lightbox-close:hover {
+		background: rgba(0, 0, 0, 0.85);
 	}
 
 	.review-card-internal .review-card-label {

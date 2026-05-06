@@ -18,6 +18,7 @@ import { AdminService } from './admin.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { AuthService } from '../auth/auth.service';
 import { ShopService } from '../shop/shop.service';
+import { DevlogsService } from '../devlogs/devlogs.service';
 
 @Controller('api/admin')
 export class AdminController {
@@ -26,6 +27,7 @@ export class AdminController {
     private readonly auditLogService: AuditLogService,
     private readonly authService: AuthService,
     private readonly shopService: ShopService,
+    private readonly devlogsService: DevlogsService,
   ) {}
 
   @UseGuards(SuperAdminGuard)
@@ -214,6 +216,13 @@ export class AdminController {
   @Get('projects/:id/reviews')
   getProjectReviews(@Param('id', ParseUUIDPipe) id: string) {
     return this.adminService.getProjectReviews(id, true);
+  }
+
+  /** Devlog entries authored by the project owner and linked to this project. */
+  @UseGuards(ReviewerGuard)
+  @Get('projects/:id/devlogs')
+  getProjectDevlogs(@Param('id', ParseUUIDPipe) id: string) {
+    return this.devlogsService.findByProject(id);
   }
 
   @UseGuards(ReviewerGuard)

@@ -25,6 +25,8 @@ export const AUDIT_ACTIONS = [
   'shop_purchase',
   'order_fulfilled',
   'order_refunded',
+  'devlog_created',
+  'devlog_deleted',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

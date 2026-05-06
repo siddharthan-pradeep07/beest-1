@@ -167,6 +167,44 @@ export class ProjectsService {
   }
 
   /**
+   * Returns the average time-to-first-review per project type, in seconds.
+   * Used by the public shipping guide so submitters know how long each
+   * project type usually takes to review.
+   *
+   * Common rejection reasons are not computed here — they are paraphrased by
+   * hand from a snapshot of feedback and embedded statically in the guide
+   * page so we never quote reviewers verbatim.
+   */
+  async getReviewStats(): Promise<
+    { projectType: string; avgSeconds: number; sampleCount: number }[]
+  > {
+    const rows: { project_type: string; avg_seconds: string; sample_count: string }[] =
+      await this.projectRepo.query(`
+        WITH first_reviews AS (
+          SELECT submission_id, MIN(created_at) AS first_review_at
+          FROM project_reviews
+          WHERE submission_id IS NOT NULL
+          GROUP BY submission_id
+        )
+        SELECT
+          p.project_type AS project_type,
+          AVG(EXTRACT(EPOCH FROM (fr.first_review_at - s.created_at))) AS avg_seconds,
+          COUNT(*) AS sample_count
+        FROM first_reviews fr
+        JOIN submissions s ON s.id = fr.submission_id
+        JOIN projects p ON p.id = s.project_id
+        WHERE fr.first_review_at >= s.created_at
+        GROUP BY p.project_type
+      `);
+
+    return rows.map((r) => ({
+      projectType: r.project_type,
+      avgSeconds: Number(r.avg_seconds),
+      sampleCount: Number(r.sample_count),
+    }));
+  }
+
+  /**
    * Returns all approved projects with public-safe fields + hours.
    */
   async findApprovedProjects(): Promise<
@@ -198,11 +236,13 @@ export class ProjectsService {
         'project.demoUrl',
         'project.hackatimeProjectName',
         'project.overrideHours',
+        'project.createdAt',
         'user.hcaSub',
         'user.name',
         'user.nickname',
         'user.hackatimeToken',
       ])
+      .orderBy('project.createdAt', 'DESC')
       .getMany();
 
     const results = await Promise.allSettled(

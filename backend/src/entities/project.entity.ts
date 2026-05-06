@@ -27,6 +27,8 @@ export const VALID_PROJECT_TYPES = [
   'python',
   'android',
   'ios',
+  'hardware',
+  'cad',
 ] as const;
 
 export type ProjectType = (typeof VALID_PROJECT_TYPES)[number];

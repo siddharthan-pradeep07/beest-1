@@ -63,12 +63,20 @@ export class ProjectsController {
         if (perProject[name]) currentHours += perProject[name];
       }
 
-      // Earned hours = the hours the user has been credited pipes for. These are locked
-      // in regardless of Hackatime's current state (renames, deletions, re-syncs). A
-      // direct approved → changes_needed clears overrideHours/pipesGranted; the
-      // unreviewed → changes_needed path keeps both, so pipes_granted > 0 is the sole
-      // source of truth for "this hours total has been approved."
-      const earnedHours = (p.pipesGranted ?? 0) > 0 ? (p.overrideHours ?? 0) : 0;
+      // Earned hours = the hours the user has been credited pipes for. Locked in
+      // regardless of Hackatime's current state (renames, deletions, re-syncs).
+      // A direct approved → changes_needed clears overrideHours/pipesGranted; the
+      // unreviewed → changes_needed path keeps both, so pipes_granted > 0 is the
+      // source of truth for credited hours.
+      //
+      // Edge case: legacy approvals from before admin.service started rejecting
+      // <= 0 hours could land at overrideHours=0/pipesGranted=0 with status='approved'.
+      // In that broken state we fall back to current Hackatime hours so the user
+      // can see their work — re-review by an admin will lock in real values.
+      let earnedHours = (p.pipesGranted ?? 0) > 0 ? (p.overrideHours ?? 0) : 0;
+      if (status === 'approved' && earnedHours === 0 && currentHours > 0) {
+        earnedHours = currentHours;
+      }
       if (earnedHours > 0) {
         byStatus['approved'] = (byStatus['approved'] ?? 0) + earnedHours;
         displayHours += earnedHours;
@@ -96,6 +104,16 @@ export class ProjectsController {
   @Get('explore')
   async explore() {
     return this.projectsService.findApprovedProjects();
+  }
+
+  /**
+   * Public endpoint used by the shipping guide page.
+   * Returns average time-to-first-review per project type.
+   */
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Get('review-stats')
+  async reviewStats() {
+    return this.projectsService.getReviewStats();
   }
 
   @Throttle({ default: { limit: 15, ttl: 60000 } })
