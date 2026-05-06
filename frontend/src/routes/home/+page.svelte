@@ -5198,10 +5198,9 @@
   }
 
   .projects-box.has-projects {
-    display: grid;
-    grid-template-columns: repeat(var(--cols, 1), 1fr);
-    align-items: stretch;
-    justify-content: start;
+    display: block;
+    column-count: var(--cols, 1);
+    column-gap: 12px;
     min-height: 0;
   }
 
@@ -5461,6 +5460,8 @@
     );
     cursor: pointer;
     transition: background 150ms ease;
+    break-inside: avoid;
+    margin-bottom: 12px;
   }
 
   .project-card:hover {
