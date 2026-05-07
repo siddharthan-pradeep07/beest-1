@@ -38,11 +38,11 @@
     },
     {
       q: 'Where and when does Beest take place?',
-      a: '[TBD]'
+      a: 'Beest runs July 10–15 at Scheveningen Beach in the Netherlands. The Strandbeest exhibition happens during that same window, so participants get to see it as part of the event.'
     },
     {
       q: 'How will the event run?',
-      a: 'Participants are invited to arrive on July 7th to watch the exhibition of the Beest - then in teams of three they will make walking mechanisms over a week, before exhibiting them on Scheveningen beach.'
+      a: 'Beest runs July 10–15. Participants will watch the Strandbeest exhibition during the event and, in teams of three, make their own walking mechanisms, before exhibiting them on Scheveningen beach on the final day.'
     },
     {
       q: 'How do I qualify?',
