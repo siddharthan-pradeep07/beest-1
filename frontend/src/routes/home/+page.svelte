@@ -1628,7 +1628,7 @@
           </label>
           <label class="review-check">
             <input type="checkbox" bind:checked={checkStartedOrUpdated} />
-            <span>I started this project later than April 2nd, 6, or shipped a significant update to an old project</span>
+            <span>I started this project later than April 2nd, 2026, or shipped a significant update to an old project</span>
           </label>
         </div>
         {#if formError}
@@ -6831,7 +6831,7 @@
   .gender-select {
     font-family: "Courier New", monospace;
     font-size: 15px;
-    color: #000;
+    color: #cbc1ae;
     background: rgba(0, 0, 0, 0.25);
     border: 1px solid rgba(203, 193, 174, 0.3);
     padding: 4px 8px;
