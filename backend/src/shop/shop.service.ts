@@ -1,6 +1,7 @@
 import {
   Injectable,
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
   ConflictException,
   Logger,
@@ -435,14 +436,29 @@ export class ShopService {
    * Refund an order — returns pipes, restocks the item, and deletes the order
    * (which cascades to its fulfillment updates). Used when an order can't be
    * fulfilled or was placed in error.
+   *
+   * `requireUserId` enforces that the order belongs to that user (used for
+   * self-refunds); `requirePending` blocks refunds on already-fulfilled orders
+   * — admins bypass both, users get both.
    */
-  async refundOrder(orderId: string, adminId?: string) {
+  async refundOrder(
+    orderId: string,
+    opts: { adminId?: string; requireUserId?: string; requirePending?: boolean } = {},
+  ) {
     return this.dataSource.transaction('SERIALIZABLE', async (manager) => {
       const order = await manager.findOne(Order, {
         where: { id: orderId },
         lock: { mode: 'pessimistic_write' },
       });
       if (!order) throw new NotFoundException('Order not found');
+      if (opts.requireUserId && order.userId !== opts.requireUserId) {
+        throw new ForbiddenException('You do not own this order');
+      }
+      if (opts.requirePending && order.status !== 'pending') {
+        throw new BadRequestException(
+          'Cannot refund an order that has already been fulfilled',
+        );
+      }
 
       const user = await manager.findOne(User, {
         where: { id: order.userId },
@@ -473,19 +489,22 @@ export class ShopService {
       await manager.remove(Order, order);
       return snapshot;
     }).then(async (snapshot) => {
+      const isSelf = !!opts.requireUserId;
       await this.auditLogService.log(
         snapshot.userId,
         'order_refunded',
-        `Order for ${snapshot.quantity}x ${snapshot.itemName} was refunded (${snapshot.pipesSpent} Pipes returned)`,
+        isSelf
+          ? `Self-refunded ${snapshot.quantity}x ${snapshot.itemName} (${snapshot.pipesSpent} Pipes returned)`
+          : `Order for ${snapshot.quantity}x ${snapshot.itemName} was refunded (${snapshot.pipesSpent} Pipes returned)`,
       );
-      if (adminId) {
+      if (opts.adminId) {
         await this.auditLogService.log(
-          adminId,
+          opts.adminId,
           'order_refunded',
           `Refunded ${snapshot.quantity}x ${snapshot.itemName} (${snapshot.pipesSpent} Pipes returned)`,
         );
       }
-      return { success: true };
+      return { success: true, refundedPipes: snapshot.pipesSpent };
     });
   }
 

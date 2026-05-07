@@ -96,6 +96,13 @@
   let purchaseError = $state('');
   let purchaseSuccess = $state('');
 
+  // User's own orders (shown at the bottom of the shop)
+  type UserOrderType = { id: string; itemName: string; quantity: number; pipesSpent: number; status: string; createdAt: string };
+  let userOrders = $state<UserOrderType[]>([]);
+  let userOrdersLoading = $state(false);
+  let refundingOrderId = $state<string | null>(null);
+  let refundError = $state('');
+
   // Fulfillment updates state
   type FulfillmentUpdateType = { id: string; orderId: string; itemName: string; message: string; isRead: boolean; createdAt: string };
   let fulfillmentUpdates = $state<FulfillmentUpdateType[]>([]);
@@ -872,7 +879,7 @@
     if (id === 'tutorial') { window.location.href = '/tutorial'; return; }
     if (creatingProject || editingProject || reviewProject) resetForm();
     activeSection = id;
-    if (id === 'shop') { fetchShopItems(); fetchPipes(); }
+    if (id === 'shop') { fetchShopItems(); fetchPipes(); fetchUserOrders(); }
     if (id === 'me') { fetchFulfillmentUpdates(); markFulfillmentRead(); }
     if (id === 'devlogs') { fetchDevlogs(); }
   }
@@ -906,6 +913,8 @@
         userPipes = data.remainingPipes;
         // Refresh shop items (stock may have changed)
         fetchShopItems();
+        // Refresh the user's orders list (new order appears at the bottom of the shop)
+        fetchUserOrders();
         // Refresh unread count
         fetchUnreadCount();
         setTimeout(() => { closeShopItem(); purchaseSuccess = ''; }, 2000);
@@ -914,6 +923,40 @@
       purchaseError = 'Network error — try again';
     }
     purchaseLoading = false;
+  }
+
+  async function fetchUserOrders() {
+    userOrdersLoading = true;
+    try {
+      const res = await fetch('/api/shop/orders');
+      if (res.ok) userOrders = await res.json();
+    } catch { /* silent */ }
+    userOrdersLoading = false;
+  }
+
+  async function refundOrder(order: UserOrderType) {
+    if (refundingOrderId) return;
+    if (!confirm(`Refund ${order.quantity}x ${order.itemName}? You'll get ${order.pipesSpent} Pipes back.`)) return;
+    refundingOrderId = order.id;
+    refundError = '';
+    try {
+      const res = await fetch(`/api/shop/orders/${order.id}/refund`, { method: 'POST' });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        userOrders = userOrders.filter((o) => o.id !== order.id);
+        if (typeof data?.refundedPipes === 'number') {
+          userPipes += data.refundedPipes;
+        } else {
+          fetchPipes();
+        }
+        fetchShopItems();
+      } else {
+        refundError = data?.message || 'Refund failed';
+      }
+    } catch {
+      refundError = 'Network error. Try again.';
+    }
+    refundingOrderId = null;
   }
 
   async function fetchFulfillmentUpdates() {
@@ -1807,6 +1850,46 @@
               {/each}
             </div>
           {/if}
+
+          <div class="my-orders">
+            <h3 class="my-orders-title">My Orders</h3>
+            {#if userOrdersLoading && userOrders.length === 0}
+              <p class="my-orders-empty">Loading…</p>
+            {:else if userOrders.length === 0}
+              <p class="my-orders-empty">You haven't placed any orders yet.</p>
+            {:else}
+              {#if refundError}
+                <p class="my-orders-error">{refundError}</p>
+              {/if}
+              <ul class="my-orders-list">
+                {#each userOrders as order}
+                  <li class="my-orders-row">
+                    <div class="my-orders-info">
+                      <span class="my-orders-name">{order.quantity}× {order.itemName}</span>
+                      <span class="my-orders-meta">
+                        {order.pipesSpent} Pipes · {new Date(order.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div class="my-orders-actions">
+                      {#if order.status === 'pending'}
+                        <span class="my-orders-status pending">Pending</span>
+                        <button
+                          class="my-orders-refund"
+                          type="button"
+                          onclick={() => refundOrder(order)}
+                          disabled={refundingOrderId === order.id}
+                        >
+                          {refundingOrderId === order.id ? 'Refunding…' : 'Refund'}
+                        </button>
+                      {:else}
+                        <span class="my-orders-status fulfilled">Fulfilled</span>
+                      {/if}
+                    </div>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
         </div>
       </div>
     </section>
@@ -4751,6 +4834,124 @@
     font-weight: 700;
   }
 
+  .my-orders {
+    margin-top: 32px;
+    padding-top: 20px;
+    border-top: 2px dashed rgba(75, 72, 64, 0.4);
+  }
+
+  .my-orders-title {
+    margin: 0 0 12px;
+    font-family: "Stone Breaker", "Courier New", monospace;
+    font-size: 22px;
+    color: #4b4840;
+  }
+
+  .my-orders-empty {
+    margin: 0;
+    font-family: "Sunny Mood", "Courier New", monospace;
+    font-size: 13px;
+    color: #6c6659;
+  }
+
+  .my-orders-error {
+    margin: 0 0 10px;
+    font-family: "Sunny Mood", "Courier New", monospace;
+    font-size: 13px;
+    color: #c48382;
+  }
+
+  .my-orders-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .my-orders-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    background: #cbc1ae;
+    border: 2px solid #3a3832;
+    box-shadow: 4px 4px 0 #3a3832;
+  }
+
+  .my-orders-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .my-orders-name {
+    font-family: "Sunny Mood", "Courier New", monospace;
+    font-size: 15px;
+    font-weight: 600;
+    color: #4b4840;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .my-orders-meta {
+    font-family: "Sunny Mood", "Courier New", monospace;
+    font-size: 12px;
+    color: #6c6659;
+  }
+
+  .my-orders-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  .my-orders-status {
+    font-family: "Sunny Mood", "Courier New", monospace;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .my-orders-status.pending {
+    background: rgba(196, 131, 130, 0.2);
+    color: #8a4a49;
+  }
+
+  .my-orders-status.fulfilled {
+    background: rgba(75, 72, 64, 0.15);
+    color: #4b4840;
+  }
+
+  .my-orders-refund {
+    font-family: "Sunny Mood", "Courier New", monospace;
+    font-size: 13px;
+    padding: 6px 12px;
+    background: #f0ebe5;
+    border: 2px solid #3a3832;
+    box-shadow: 2px 2px 0 #3a3832;
+    color: #4b4840;
+    cursor: pointer;
+    transition: transform 100ms ease, box-shadow 100ms ease;
+  }
+
+  .my-orders-refund:hover:not(:disabled) {
+    transform: translate(-1px, -1px);
+    box-shadow: 3px 3px 0 #3a3832;
+  }
+
+  .my-orders-refund:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
   .shop-card-skeleton {
     background: rgba(255,255,255,0.05);
     border: 2px solid rgba(255,255,255,0.08);
@@ -6830,7 +7031,7 @@
     padding: 14px;
     font-family: "Stone Breaker", "Courier New", monospace;
     font-size: 22px;
-    color: #93b4cd;
+    color: #000;
     text-align: center;
     text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.3);
   }

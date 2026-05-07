@@ -5,6 +5,7 @@ import {
   Delete,
   Body,
   Param,
+  ParseUUIDPipe,
   Req,
   UseGuards,
   BadRequestException,
@@ -56,6 +57,20 @@ export class ShopController {
     const userId = (req as any).user?.uid;
     if (!userId) throw new BadRequestException('Not authenticated');
     return this.shopService.getUserOrders(userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('orders/:id/refund')
+  async refundOwnOrder(
+    @Req() req: Request,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const userId = (req as any).user?.uid;
+    if (!userId) throw new BadRequestException('Not authenticated');
+    return this.shopService.refundOrder(id, {
+      requireUserId: userId,
+      requirePending: true,
+    });
   }
 
   @UseGuards(JwtAuthGuard)

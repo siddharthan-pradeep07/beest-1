@@ -399,7 +399,7 @@ export class AdminController {
     @Req() req: Request,
   ) {
     const adminId = (req as any).user?.uid;
-    return this.shopService.refundOrder(id, adminId);
+    return this.shopService.refundOrder(id, { adminId });
   }
 
   @UseGuards(SuperAdminGuard)
