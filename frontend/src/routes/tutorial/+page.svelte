@@ -365,7 +365,7 @@
   <!-- Section 0: Go! (top — last seen) -->
   <div class="section-content go-section" style="top: {innerHeight}px;">
     <div class="go-box">
-      <p class="section-paragraph">You're all set! If you get stuck you can replay this tutorial, read the <a href="/faq" class="section-link">FAQ</a> or ask in <a href="https://hackclub.enterprise.slack.com/archives/C0AQ4T1CWH2" target="_blank" rel="noopener" class="section-link">#beest-help</a>.</p>
+      <p class="section-paragraph">You're all set! If you get stuck you can replay this tutorial, read the <a href="/FAQ" class="section-link">FAQ</a> or ask in <a href="https://hackclub.enterprise.slack.com/archives/C0AQ4T1CWH2" target="_blank" rel="noopener" class="section-link">#beest-help</a>.</p>
       <a href="/home" class="action-btn go-home-btn" data-sveltekit-reload>GO!</a>
     </div>
   </div>
