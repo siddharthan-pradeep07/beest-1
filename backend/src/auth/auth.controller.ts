@@ -16,12 +16,14 @@ import type { Request } from 'express';
 import { AuthService, ALLOWED_GENDERS, type Gender } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RsvpService } from '../rsvp/rsvp.service';
+import { IdentityService } from '../identity/identity.service';
 
 @Controller('api/auth')
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly rsvpService: RsvpService,
+    private readonly identityService: IdentityService,
   ) {}
 
   @Throttle({ default: { limit: 10, ttl: 60000 } })
@@ -108,11 +110,19 @@ export class AuthController {
   @Get('shipping-eligibility')
   async shippingEligibility(@Req() req: Request) {
     const user = (req as any).user;
+    const hasAddress = !!user.has_address;
+    const hasBirthdate = !!user.has_birthdate;
+    const identityVerified = await this.identityService.isVerified({
+      slackId: user.slack_id,
+      email: user.email,
+    });
     return {
-      hasAddress: !!user.has_address,
-      hasBirthdate: !!user.has_birthdate,
-      eligible: !!user.has_address && !!user.has_birthdate,
+      hasAddress,
+      hasBirthdate,
+      identityVerified,
+      eligible: hasAddress && hasBirthdate && identityVerified,
       addressPortalUrl: 'https://auth.hackclub.com/portal/address',
+      identityPortalUrl: 'https://auth.hackclub.com/verifications/document',
     };
   }
 

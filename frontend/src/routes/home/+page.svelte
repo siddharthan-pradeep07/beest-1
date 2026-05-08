@@ -207,9 +207,14 @@
   let resubmitLoading = $state(false);
 
   // Shipping eligibility
-  let shippingCheck = $state<{ hasAddress: boolean; hasBirthdate: boolean; eligible: boolean; addressPortalUrl: string } | null>(null);
+  let shippingCheck = $state<{ hasAddress: boolean; hasBirthdate: boolean; identityVerified: boolean; eligible: boolean; addressPortalUrl: string; identityPortalUrl: string } | null>(null);
   let shippingCheckLoading = $state(false);
   let showShippingPrompt = $state(false);
+  let identityPollAttempts = $state(0);
+  let identityPollExhausted = $state(false);
+  let identityPollTimer: ReturnType<typeof setTimeout> | null = null;
+  const IDENTITY_POLL_INTERVAL_MS = 5000;
+  const IDENTITY_POLL_MAX_ATTEMPTS = 60; // ~5 minutes
 
   function resetForm() {
     creatingProject = false;
@@ -605,6 +610,8 @@
         shippingCheck = await res.json();
         if (!shippingCheck?.eligible) {
           showShippingPrompt = true;
+          identityPollAttempts = 0;
+          identityPollExhausted = false;
           return false;
         }
         return true;
@@ -612,6 +619,67 @@
     } catch { /* silent */ }
     shippingCheckLoading = false;
     return true; // don't block on network errors
+  }
+
+  /**
+   * Re-fetches /shipping-eligibility once. Used by the auto-poll while the
+   * prompt is open and by the manual "check now" button after the auto-poll
+   * times out. The backend's identity check is live, so as soon as HCA
+   * approves the document this returns true.
+   */
+  async function refreshShippingEligibility(): Promise<void> {
+    try {
+      const res = await fetch('/api/auth/shipping-eligibility');
+      if (res.ok) shippingCheck = await res.json();
+    } catch { /* silent */ }
+  }
+
+  function stopIdentityPolling() {
+    if (identityPollTimer !== null) {
+      clearTimeout(identityPollTimer);
+      identityPollTimer = null;
+    }
+  }
+
+  function scheduleIdentityPoll() {
+    stopIdentityPolling();
+    identityPollTimer = setTimeout(async () => {
+      identityPollTimer = null;
+      identityPollAttempts += 1;
+      await refreshShippingEligibility();
+      // The $effect below decides whether to re-arm based on the fresh state.
+    }, IDENTITY_POLL_INTERVAL_MS);
+  }
+
+  // While the prompt is open and identity is still missing, keep polling.
+  // Stops automatically when the prompt closes, when identity verifies, or
+  // when we hit the attempt cap.
+  $effect(() => {
+    const polling =
+      showShippingPrompt &&
+      shippingCheck != null &&
+      !shippingCheck.identityVerified &&
+      !identityPollExhausted;
+
+    if (!polling) {
+      stopIdentityPolling();
+      return;
+    }
+
+    if (identityPollAttempts >= IDENTITY_POLL_MAX_ATTEMPTS) {
+      identityPollExhausted = true;
+      stopIdentityPolling();
+      return;
+    }
+
+    scheduleIdentityPoll();
+    return () => stopIdentityPolling();
+  });
+
+  async function manualIdentityRecheck() {
+    identityPollAttempts = 0;
+    identityPollExhausted = false;
+    await refreshShippingEligibility();
   }
 
   async function submitForReview() {
@@ -1571,8 +1639,19 @@
       <div class="section-inner">
         <button class="form-cancel review-close" onclick={() => { showShippingPrompt = false; }}>&times;</button>
         <h2 class="section-title">Complete Your Profile</h2>
-        <p class="shipping-prompt-text">Before submitting for review, we need your shipping details so we can send you prizes. Please fill out the missing info in your Hack Club Auth settings:</p>
+        <p class="shipping-prompt-text">Before submitting for review, we need a few things from your Hack Club Auth profile — we use these to verify you and to ship prizes when your project is approved:</p>
         <div class="shipping-prompt-items">
+          {#if !shippingCheck.identityVerified}
+            <div class="shipping-prompt-item missing">
+              <span class="shipping-icon">&#x2717;</span>
+              <span>Identity not verified</span>
+            </div>
+          {:else}
+            <div class="shipping-prompt-item done">
+              <span class="shipping-icon">&#x2713;</span>
+              <span>Identity verified</span>
+            </div>
+          {/if}
           {#if !shippingCheck.hasAddress}
             <div class="shipping-prompt-item missing">
               <span class="shipping-icon">&#x2717;</span>
@@ -1596,10 +1675,27 @@
             </div>
           {/if}
         </div>
-        <a class="action-btn shipping-portal-btn" href={shippingCheck.addressPortalUrl} target="_blank" rel="noopener noreferrer">
-          Update on Hack Club Auth
-        </a>
-        <p class="shipping-prompt-note">After updating your info, log out and log back in to refresh your profile, then try submitting again.</p>
+        {#if !shippingCheck.identityVerified}
+          <a class="action-btn shipping-portal-btn" href={shippingCheck.identityPortalUrl} target="_blank" rel="noopener noreferrer">
+            Verify your identity
+          </a>
+          {#if !identityPollExhausted}
+            <p class="shipping-prompt-poll">Checking automatically — verification can take a few seconds to reflect after Hack Club approves your document.</p>
+          {:else}
+            <button class="action-btn shipping-recheck-btn" onclick={manualIdentityRecheck}>
+              Check again
+            </button>
+            <p class="shipping-prompt-poll">We stopped checking automatically. Tap above once HQ approves your document.</p>
+          {/if}
+        {:else if shippingCheck.eligible}
+          <p class="shipping-prompt-poll shipping-prompt-success">Identity verified! Click Submit again to ship.</p>
+        {/if}
+        {#if !shippingCheck.hasAddress || !shippingCheck.hasBirthdate}
+          <a class="action-btn shipping-portal-btn" href={shippingCheck.addressPortalUrl} target="_blank" rel="noopener noreferrer">
+            Update address &amp; birthdate
+          </a>
+          <p class="shipping-prompt-note">Address and birthdate changes require a log out / log back in to refresh.</p>
+        {/if}
       </div>
     </section>
     {/if}
@@ -5539,6 +5635,24 @@
     line-height: 1.5;
     margin-top: 16px;
     text-align: center;
+  }
+
+  .shipping-prompt-poll {
+    font-family: "Courier New", monospace;
+    font-size: 13px;
+    color: #9e9888;
+    line-height: 1.5;
+    margin-top: 12px;
+    text-align: center;
+  }
+
+  .shipping-prompt-poll.shipping-prompt-success {
+    color: #4a7a3a;
+    font-weight: bold;
+  }
+
+  .shipping-recheck-btn {
+    margin-top: 8px;
   }
 
   .review-checklist {

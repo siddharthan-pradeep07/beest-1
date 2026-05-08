@@ -5,6 +5,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { RsvpModule } from '../rsvp/rsvp.module';
+import { IdentityModule } from '../identity/identity.module';
 import { User } from '../entities/user.entity';
 import { Session } from '../entities/session.entity';
 import { AuthService } from './auth.service';
@@ -34,6 +35,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
       throttlers: [{ ttl: 60000, limit: 30 }],
     }),
     RsvpModule,
+    IdentityModule,
   ],
   controllers: [AuthController],
   providers: [

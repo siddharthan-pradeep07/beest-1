@@ -10,6 +10,7 @@ import { fetchWithTimeout } from '../fetch.util';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { HackatimeService } from '../hackatime/hackatime.service';
 import { RsvpService } from '../rsvp/rsvp.service';
+import { IdentityService } from '../identity/identity.service';
 import { CreateProjectDto } from './create-project.dto';
 import { UpdateProjectDto } from './update-project.dto';
 
@@ -41,6 +42,7 @@ export class ProjectsService {
     private auditLogService: AuditLogService,
     private hackatimeService: HackatimeService,
     private rsvpService: RsvpService,
+    private identityService: IdentityService,
     @InjectRepository(Project)
     private projectRepo: Repository<Project>,
     @InjectRepository(Comment)
@@ -429,6 +431,7 @@ export class ProjectsService {
         if (project.status !== 'unshipped' && project.status !== 'changes_needed') {
           throw new BadRequestException('Invalid status transition');
         }
+        await this.requireShipEligibility(userId);
         // Re-verify Hackatime account ownership at submit time, even if the
         // linked names weren't touched in this request. Catches projects that
         // were created before this guard existed.
@@ -531,6 +534,8 @@ export class ProjectsService {
     if (project.status !== 'approved') {
       throw new BadRequestException('Only approved projects can be resubmitted');
     }
+
+    await this.requireShipEligibility(userId);
 
     // Validate inputs
     const cleanDesc = this.requireString(changeDescription, 'changeDescription', 500);
@@ -730,6 +735,30 @@ export class ProjectsService {
 
     await this.commentRepo.remove(comment);
     return { deleted: true };
+  }
+
+  /**
+   * Backend gate for shipping a project. Live call to identity.hackclub.com so a
+   * freshly verified user can ship without logging out and back in.
+   *
+   * Address/birthdate are intentionally NOT enforced here: an identity-verified
+   * user has a birthdate on file by construction, and missing addresses get
+   * caught at fulfillment. The frontend still surfaces the soft prompt for both.
+   */
+  private async requireShipEligibility(userId: string): Promise<void> {
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      select: ['email', 'slackId'],
+    });
+    const verified = await this.identityService.isVerified({
+      slackId: user?.slackId,
+      email: user?.email,
+    });
+    if (!verified) {
+      throw new ForbiddenException(
+        'Verify your identity at https://auth.hackclub.com/verifications/document before shipping a project.',
+      );
+    }
   }
 
   /* ------------------------------------------------------------------ */
