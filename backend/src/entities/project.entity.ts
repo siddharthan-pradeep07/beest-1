@@ -12,6 +12,7 @@ import { User } from './user.entity';
 export const VALID_PROJECT_STATUSES = [
   'unshipped',
   'unreviewed',
+  'fraud_pending',
   'changes_needed',
   'approved',
 ] as const;

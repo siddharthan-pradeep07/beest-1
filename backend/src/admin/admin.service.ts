@@ -20,6 +20,8 @@ import { RsvpService } from '../rsvp/rsvp.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { HcaService } from '../hca/hca.service';
 import { fetchWithTimeout } from '../fetch.util';
+import { FraudReviewService } from '../fraud-review/fraud-review.service';
+import { ProjectAirtableSyncService } from '../projects/project-airtable-sync.service';
 
 const VALID_PERMS = [
   'User',
@@ -74,6 +76,8 @@ export class AdminService {
     private readonly rsvpService: RsvpService,
     private readonly auditLogService: AuditLogService,
     private readonly hcaService: HcaService,
+    private readonly fraudReviewService: FraudReviewService,
+    private readonly airtableSync: ProjectAirtableSyncService,
   ) {
     this.hackatimeBaseUrl = this.configService.get(
       'HACKATIME_BASE_URL',
@@ -291,6 +295,7 @@ export class AdminService {
     const statusCounts = {
       unshipped: 0,
       unreviewed: 0,
+      fraud_pending: 0,
       changes_needed: 0,
       approved: 0,
     };
@@ -379,6 +384,12 @@ export class AdminService {
         'Project is already approved. Send to "changes needed" first if you need to re-review.',
       );
     }
+    // Block re-approving while still waiting on the fraud-review verdict.
+    if (previousStatus === 'fraud_pending' && status === 'approved') {
+      throw new BadRequestException(
+        'Project is already awaiting fraud review. Wait for the verdict before re-reviewing.',
+      );
+    }
 
     // Find the latest unreviewed submission for this project
     const submission = await this.submissionRepo.findOne({
@@ -395,7 +406,14 @@ export class AdminService {
     // cumulative; for reships the delta accumulates on top of prior approvals.
     // After approved → changes_needed (which wipes hours/claws back pipes), the
     // project is back at 0, so a follow-up approval starts fresh from the delta.
-    project.status = status;
+    //
+    // When the reviewer approves, the project does NOT go straight to 'approved'.
+    // It moves to 'fraud_pending' first — the joe.fraud first-pass review must
+    // clear before pipes are granted and the project syncs to Airtable. The
+    // background poller in FraudReviewService observes the verdict and either
+    // finalises the approval or marks the project changes_needed with a
+    // generic user-facing message.
+    project.status = status === 'approved' ? 'fraud_pending' : status;
     if (status === 'approved') {
       if (overrideHours !== null && overrideHours !== undefined) {
         const delta = Math.round(overrideHours * 10) / 10;
@@ -487,46 +505,23 @@ export class AdminService {
       }
     }
 
-    // 2b. Grant pipes as delta on this submission.
-    //    Target = floor(sum of override_hours across the user's earned projects), so that
-    //    fractional hours accumulate across approvals (e.g. 38.6 + 38.6 = 77.2 → 77 pipes,
-    //    not floor(38.6) + floor(38.6) = 76). "Earned" = currently approved, OR previously
-    //    approved and now awaiting re-review (pipes_granted > 0 on a non-approved row).
-    //    Delta is target − sum(pipes_granted) across all the user's projects.
-    if (status === 'approved' && project.overrideHours != null && project.overrideHours > 0) {
-      const totals = await this.projectRepo
-        .createQueryBuilder('p')
-        .select('COALESCE(SUM(p.override_hours), 0)', 'earnedHours')
-        .addSelect('COALESCE(SUM(p.pipes_granted), 0)', 'granted')
-        .where('p.user_id = :uid', { uid: project.userId })
-        .andWhere(
-          `(p.status = 'approved' OR (p.status <> 'approved' AND p.pipes_granted > 0))`,
-        )
-        .getRawOne<{ earnedHours: string; granted: string }>();
+    // 2b. Pipe granting on the approved path is DEFERRED to the fraud-review
+    //     poller (FraudReviewService.completeApproval). Clawback on the
+    //     changes_needed path was already handled in section 2a above.
 
-      const totalPipesTarget = Math.floor(Number(totals?.earnedHours ?? 0));
-      const previouslyGranted = Number(totals?.granted ?? 0);
-      const delta = totalPipesTarget - previouslyGranted;
-      if (delta > 0) {
-        await this.userRepo.increment({ id: project.userId }, 'pipes', delta);
-        project.pipesGranted = (project.pipesGranted ?? 0) + delta;
-        await this.projectRepo.save(project);
-
-        // Track what this submission granted
-        if (submission) {
-          submission.pipesGranted = delta;
-        }
-      }
-    }
-
-    // 3. Update the submission status and hours
+    // 3. Update the submission status and hours.
+    //    On the approved path the submission stays at 'unreviewed' until the
+    //    fraud poller flips it to 'approved' (or to 'changes_needed' on
+    //    fraud-rejection). Only update here for the non-approved paths.
     if (submission) {
-      submission.status = status;
       if (overrideHours !== null && overrideHours !== undefined) {
         submission.overrideHours = Math.round(overrideHours * 10) / 10;
       }
       if (internalHours !== null && internalHours !== undefined) {
         submission.internalHours = Math.round(internalHours * 10) / 10;
+      }
+      if (status !== 'approved') {
+        submission.status = status;
       }
       await this.submissionRepo.save(submission);
     }
@@ -546,82 +541,22 @@ export class AdminService {
     // 5. Audit log to the project owner (not the reviewer)
     const label =
       status === 'approved'
-        ? `Project "${project.name}" was approved`
+        ? `Project "${project.name}" was approved by reviewer — awaiting fraud check`
         : `Project "${project.name}" received feedback`;
     await this.auditLogService.log(project.userId, 'project_reviewed', label);
 
-    // 6. Sync approval date to Airtable for Loops
-    if (status === 'approved' && project.user?.email) {
-      this.rsvpService.updateDateField(project.user.email, 'Loops - beestApprovedProject');
-    }
-
-    // 7. Push the approved project + HCA address/birthday to the Airtable Projects table.
-    // Pass the just-saved submission so the row carries this ship's DELTA hours
-    // (not the project's cumulative total). Each approval intentionally creates
-    // a new row — one per ship — so downstream consumers can sum deltas for the
-    // user's full work history.
-    if (status === 'approved' && project.user?.email) {
-      this.syncApprovedProjectToAirtable(project, review, submission ?? null).catch((err) => {
-        this.logger.error(`Airtable Projects sync failed for ${project.id}: ${err}`);
-      });
+    // 6. Stage the project for the joe.fraud first-pass review. Loops sync and
+    //    the Airtable Projects push are deferred to FraudReviewService.completeApproval
+    //    once the fraud verdict clears.
+    if (status === 'approved') {
+      try {
+        await this.fraudReviewService.stageProjectForReview(project.id);
+      } catch (err) {
+        this.logger.error(`Failed to stage fraud review for ${project.id}: ${err}`);
+      }
     }
 
     return { success: true };
-  }
-
-  private async syncApprovedProjectToAirtable(
-    project: Project,
-    review: ProjectReview,
-    submission: Submission | null,
-  ): Promise<void> {
-    const identity = await this.hcaService.getIdentity(project.user.hcaSub);
-    const address = identity?.address ?? {};
-    const streetLines = (address.street_address ?? '').split(/\r?\n/);
-
-    const fullName = identity?.name ?? '';
-    const [splitFirst, ...splitRest] = fullName.split(' ');
-    const firstName = (identity as any)?.given_name ?? splitFirst;
-    const lastName = (identity as any)?.family_name ?? splitRest.join(' ');
-
-    const screenshots = [project.screenshot1Url, project.screenshot2Url]
-      .filter((url): url is string => !!url)
-      .map((url) => ({ url }));
-
-    // Per-ship delta hours, not the project's cumulative — each Airtable row
-    // carries the new work approved in THIS submission so downstream sums are
-    // correct across reships. Falls back to project cumulative for legacy rows
-    // (project predates the submission table).
-    const shipInternalHours = submission?.internalHours ?? project.internalHours;
-
-    const fields: Record<string, any> = {
-      'First Name': firstName,
-      'Last Name': lastName,
-      'Description': project.description,
-      'Email': project.user.email,
-      'Playable URL': project.demoUrl,
-      'Code URL': project.codeUrl,
-      'Screenshot': screenshots,
-      'Address (Line 1)': streetLines[0],
-      'Address (Line 2)': streetLines.slice(1).join(', '),
-      'City': address.locality,
-      'State / Province': address.region,
-      'Country': address.country,
-      'ZIP / Postal Code': address.postal_code,
-      'Birthday': identity?.birthdate,
-      'Override Hours Spent': shipInternalHours,
-      'Override Hours Spent Justification': review.overrideJustification,
-    };
-
-    // Drop empty/null/undefined so Airtable doesn't reject the record
-    const cleanFields = Object.fromEntries(
-      Object.entries(fields).filter(([, v]) => {
-        if (v === null || v === undefined || v === '') return false;
-        if (Array.isArray(v) && v.length === 0) return false;
-        return true;
-      }),
-    );
-
-    await this.rsvpService.createApprovedProjectRecord(cleanFields);
   }
 
   async resyncProjectToAirtable(projectId: string, reviewerId: string) {
@@ -652,9 +587,9 @@ export class AdminService {
 
     // Re-push the full project record to Airtable Projects table
     try {
-      await this.syncApprovedProjectToAirtable(
+      await this.airtableSync.syncApprovedProject(
         project,
-        latestReview ?? ({} as ProjectReview),
+        latestReview?.overrideJustification ?? null,
         latestApprovedSub ?? null,
       );
     } catch (err) {

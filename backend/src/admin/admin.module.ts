@@ -15,6 +15,8 @@ import { Submission } from '../entities/submission.entity';
 import { ShopModule } from '../shop/shop.module';
 import { HcaModule } from '../hca/hca.module';
 import { DevlogsModule } from '../devlogs/devlogs.module';
+import { FraudReviewModule } from '../fraud-review/fraud-review.module';
+import { ProjectAirtableSyncModule } from '../projects/project-airtable-sync.module';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { SuperAdminGuard } from './super-admin.guard';
@@ -29,6 +31,8 @@ import { ReviewerGuard } from './reviewer.guard';
     ShopModule,
     HcaModule,
     DevlogsModule,
+    FraudReviewModule,
+    ProjectAirtableSyncModule,
   ],
   controllers: [AdminController],
   providers: [AdminService, SuperAdminGuard, ReviewerGuard],

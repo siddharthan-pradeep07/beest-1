@@ -1808,7 +1808,7 @@
                   <div class="project-header-row">
                     <h3 class="project-name">{project.name}</h3>
                     <span class="project-type-badge">{project.projectType}</span>
-                    <span class="project-status-badge {project.status}">{project.status === 'changes_needed' ? 'Changes Needed' : project.status}</span>
+                    <span class="project-status-badge {project.status === 'fraud_pending' ? 'unreviewed' : project.status}">{project.status === 'changes_needed' ? 'Changes Needed' : project.status === 'fraud_pending' ? 'In Review' : project.status}</span>
                   </div>
                   <p class="project-desc">{project.description}</p>
                   <div class="project-links">
