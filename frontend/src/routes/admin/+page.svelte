@@ -96,6 +96,7 @@
 		totalHours: number;
 		earliestHeartbeat: number | null;
 		previousApprovedHours: number;
+		previousInternalHours: number;
 		trustLevel: string | null;
 		linkedBanned: boolean;
 		linkedEmail: string | null;
@@ -117,6 +118,14 @@
 	let reviewSubmitting = $state(false);
 	let customHours = $state(0);
 	let userFacingHours = $state(0);
+
+	// Reviewer must add their own reasoning beyond the auto-generated template
+	// (~180 chars) before approving or rejecting. Server enforces ≥230 chars too.
+	const JUSTIFICATION_MIN = 230;
+	let justificationOk = $derived(overrideJustification.trim().length >= JUSTIFICATION_MIN);
+	let justificationCharsRemaining = $derived(
+		Math.max(0, JUSTIFICATION_MIN - overrideJustification.trim().length),
+	);
 
 	let selectedProject = $derived(allProjects.find(p => p.id === expandedProjectId) ?? null);
 	let projScreenIdx = $state(0);
@@ -226,15 +235,23 @@
 		const htNames = (hackatimeData.hackatimeProjects ?? []).map(p => p.name).join(', ');
 		const htNamesNote = htNames ? `\nHackatime projects: ${htNames}` : '';
 		const prevHours = hackatimeData.previousApprovedHours ?? 0;
-		const deltaNote = prevHours > 0 ? `\nPreviously approved: ${prevHours}h — delta: ${Math.round((adjustedHours - prevHours) * 10) / 10}h` : '';
-		const next = `the user tracked ${hackatimeData.totalHours} hours on the project through hackatime (${label} to ${adjustedHours}h)${updateNote}${htNamesNote}${deltaNote}\n\nsigned off by ${data.user.name ?? 'unknown'}`;
+		// adjustedHours is the DELTA of new hours the reviewer is approving on this
+		// ship (cumulative on an initial ship). Project total after this approval
+		// is prevHours + adjustedHours.
+		const deltaNote = prevHours > 0 ? `\nPreviously approved: ${prevHours}h — this ship's delta: ${adjustedHours}h (project total after: ${Math.round((prevHours + adjustedHours) * 10) / 10}h)` : '';
+		const next = `the user tracked ${hackatimeData.totalHours} hours on the project through hackatime (${label} to ${adjustedHours}h of new work)${updateNote}${htNamesNote}${deltaNote}\n\nsigned off by ${data.user.name ?? 'unknown'}`;
 		overrideJustification = next;
 		lastAutoJustification = next;
 	}
 
 	function adjustHours(factor: number) {
 		if (!hackatimeData) return;
-		const adjusted = Math.round(hackatimeData.totalHours * factor * 10) / 10;
+		// Reviewer is approving the DELTA (new hours since last approval) on a
+		// reship, or the cumulative on an initial ship. The delta-of-Hackatime
+		// is what they should be scaling.
+		const prev = hackatimeData.previousInternalHours ?? 0;
+		const deltaHt = Math.max(0, hackatimeData.totalHours - prev);
+		const adjusted = Math.round(deltaHt * factor * 10) / 10;
 		customHours = adjusted;
 		const label = factor === 0.5 ? 'halved' : factor === 1/3 ? 'reduced to a third' : `reduced to ${Math.round(factor * 100)}%`;
 		buildJustification(adjusted, label);
@@ -254,7 +271,9 @@
 		const htNames = (hackatimeData?.hackatimeProjects ?? []).map(p => p.name).join(', ');
 		const htNamesNote = htNames ? `\nHackatime projects: ${htNames}` : '';
 		const prevHours = hackatimeData?.previousApprovedHours ?? 0;
-		const deltaNote = prevHours > 0 ? `\nPreviously approved: ${prevHours}h — delta: ${Math.round((customHours - prevHours) * 10) / 10}h` : '';
+		// customHours is the DELTA of new hours the reviewer is approving on this
+		// ship (cumulative on an initial ship). Project total after = prev + delta.
+		const deltaNote = prevHours > 0 ? `\nPreviously approved: ${prevHours}h — this ship's delta: ${customHours}h (project total after: ${Math.round((prevHours + customHours) * 10) / 10}h)` : '';
 		const next = `the user tracked ${hackatimeData?.totalHours ?? 0} hours on the project through hackatime${updateNote}${htNamesNote}${deltaNote}${unifiedNote}\n\nsigned off by ${data.user.name ?? 'unknown'}`;
 		overrideJustification = next;
 		lastAutoJustification = next;
@@ -289,14 +308,20 @@
 				if (res.ok) {
 					hackatimeData = await res.json();
 				} else {
-					hackatimeData = { totalHours: 0, earliestHeartbeat: null, previousApprovedHours: 0, hackatimeProjects: [], trustLevel: null, linkedBanned: false, linkedEmail: null, linkedSlackUid: null, beestEmail: null, beestSlackId: null, emailMismatch: false, unifiedDuplicate: false, unifiedError: true };
+					hackatimeData = { totalHours: 0, earliestHeartbeat: null, previousApprovedHours: 0, previousInternalHours: 0, hackatimeProjects: [], trustLevel: null, linkedBanned: false, linkedEmail: null, linkedSlackUid: null, beestEmail: null, beestSlackId: null, emailMismatch: false, unifiedDuplicate: false, unifiedError: true };
 				}
 			} catch {
-				hackatimeData = { totalHours: 0, earliestHeartbeat: null, previousApprovedHours: 0, hackatimeProjects: [], trustLevel: null, linkedBanned: false, linkedEmail: null, linkedSlackUid: null, beestEmail: null, beestSlackId: null, emailMismatch: false, unifiedDuplicate: false, unifiedError: true };
+				hackatimeData = { totalHours: 0, earliestHeartbeat: null, previousApprovedHours: 0, previousInternalHours: 0, hackatimeProjects: [], trustLevel: null, linkedBanned: false, linkedEmail: null, linkedSlackUid: null, beestEmail: null, beestSlackId: null, emailMismatch: false, unifiedDuplicate: false, unifiedError: true };
 			} finally {
 				hackatimeLoading = false;
-				customHours = hackatimeData?.totalHours ?? 0;
-				userFacingHours = hackatimeData?.totalHours ?? 0;
+				// Default the reviewer's inputs to the DELTA of new Hackatime work
+				// since the last approval. For initial ships previousApprovedHours/
+				// previousInternalHours are 0, so the delta = total cumulative.
+				const totalHt = hackatimeData?.totalHours ?? 0;
+				const prevOverride = hackatimeData?.previousApprovedHours ?? 0;
+				const prevInternal = hackatimeData?.previousInternalHours ?? 0;
+				customHours = Math.max(0, Math.round((totalHt - prevInternal) * 10) / 10);
+				userFacingHours = Math.max(0, Math.round((totalHt - prevOverride) * 10) / 10);
 				buildInitialJustification(proj);
 			}
 		}
@@ -1483,7 +1508,7 @@
 													<span class="ht-earliest">first heartbeat: {new Date(hackatimeData.earliestHeartbeat * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
 												{/if}
 												{#if hackatimeData.previousApprovedHours > 0}
-													<span class="ht-delta">prev: {hackatimeData.previousApprovedHours}h — delta: {Math.round((hackatimeData.totalHours - hackatimeData.previousApprovedHours) * 10) / 10}h</span>
+													<span class="ht-delta">prev approved: {hackatimeData.previousApprovedHours}h — new Hackatime since: {Math.round((hackatimeData.totalHours - hackatimeData.previousApprovedHours) * 10) / 10}h</span>
 												{/if}
 											</div>
 											{#if hackatimeData.linkedBanned || hackatimeData.emailMismatch || hackatimeData.trustLevel === 'red'}
@@ -1527,14 +1552,20 @@
 												<div class="unified-error-alert">Unified check failed — could not verify code URL against Approved Projects</div>
 											{/if}
 											<label class="ht-justification-label">
-												Override Justification:
+												Override Justification: <span class="ht-justification-counter" class:ok={justificationOk}>{justificationOk ? 'ok' : `add ${justificationCharsRemaining} more chars`}</span>
 												<textarea class="ht-justification" bind:value={overrideJustification} rows="6"></textarea>
 											</label>
 										</div>
 									{/if}
 
+									{#if hackatimeData && (hackatimeData.previousApprovedHours > 0 || hackatimeData.previousInternalHours > 0)}
+										<div class="hours-reship-note">
+											<strong>Reship review:</strong> enter only the <em>new hours since the last approval</em> (delta). Defaults are the Hackatime delta. The submitted value is added on top of the previously approved hours, not replacing them.
+										</div>
+									{/if}
+
 									<div class="hours-adjust">
-										<span class="hours-adjust-label">Internal:</span>
+										<span class="hours-adjust-label">Internal{#if hackatimeData && hackatimeData.previousInternalHours > 0} (Δ){/if}:</span>
 										<button class="hours-btn" onclick={() => adjustHours(0.5)}>Halve</button>
 										<button class="hours-btn" onclick={() => adjustHours(1/3)}>Third</button>
 										<button class="hours-btn" onclick={() => adjustHours(0.25)}>Quarter</button>
@@ -1544,7 +1575,7 @@
 											<button class="hours-tick" onclick={() => { customHours = Math.round((customHours + 1) * 10) / 10; applyCustomHours(); }}>+</button>
 										</div>
 										<span class="hours-adjust-divider">|</span>
-										<span class="hours-adjust-label">User Facing:</span>
+										<span class="hours-adjust-label">User Facing{#if hackatimeData && hackatimeData.previousApprovedHours > 0} (Δ){/if}:</span>
 										<button class="hours-btn" onclick={() => { userFacingHours = Math.round(userFacingHours * 0.5 * 10) / 10; }}>Halve</button>
 										<button class="hours-btn" onclick={() => { userFacingHours = Math.round(userFacingHours * (1/3) * 10) / 10; }}>Third</button>
 										<button class="hours-btn" onclick={() => { userFacingHours = Math.round(userFacingHours * 0.25 * 10) / 10; }}>Quarter</button>
@@ -1572,8 +1603,8 @@
 									</div>
 
 									<div class="review-actions">
-										<button class="review-btn review-btn-approve" onclick={() => reviewProject('approved')} disabled={reviewSubmitting}>Approve</button>
-										<button class="review-btn review-btn-reject" onclick={() => reviewProject('changes_needed')} disabled={reviewSubmitting || !userFeedback.trim()}>Reject</button>
+										<button class="review-btn review-btn-approve" onclick={() => reviewProject('approved')} disabled={reviewSubmitting || !justificationOk}>Approve</button>
+										<button class="review-btn review-btn-reject" onclick={() => reviewProject('changes_needed')} disabled={reviewSubmitting || !userFeedback.trim() || !justificationOk}>Reject</button>
 										<button class="review-btn review-btn-ban" onclick={() => { if (confirm('Ban this user and reject their project?')) reviewProject('ban'); }} disabled={reviewSubmitting || !isSuperAdmin} title={!isSuperAdmin ? 'Ban is Super Admin only — flag in internal note and ping Euan' : ''}>Fail &amp; Ban</button>
 									</div>
 								{/if}
@@ -3175,6 +3206,31 @@
 	.ht-justification:focus {
 		outline: none;
 		border-color: #5b9bd5;
+	}
+
+	.ht-justification-counter {
+		display: inline-block;
+		margin-left: 0.5rem;
+		padding: 0.1rem 0.5rem;
+		font-size: 0.75rem;
+		font-weight: 700;
+		border-radius: 4px;
+		background: rgba(212, 90, 90, 0.18);
+		color: #e08080;
+	}
+	.ht-justification-counter.ok {
+		background: rgba(90, 180, 110, 0.18);
+		color: #6fc285;
+	}
+
+	.hours-reship-note {
+		background: rgba(60, 130, 200, 0.12);
+		border: 1px solid #3b7bb5;
+		border-radius: 6px;
+		color: #b8d4ee;
+		padding: 0.5rem 0.75rem;
+		font-size: 0.8rem;
+		margin: 0.5rem 0;
 	}
 
 	/* ── Shop Admin ── */

@@ -55,6 +55,10 @@ export class AdminService {
   private readonly dauHistoryCache = new Map<string, number>();
   private dauHistoryInflight: Promise<void> | null = null;
   private static readonly DAU_HISTORY_START = '2026-04-03';
+  // Beest event start. Hackatime hours logged before this date should not
+  // count toward project review totals (admin /user/projects returns lifetime
+  // total_duration with no date filter, so we reconstruct from spans).
+  private static readonly HACKATIME_EVENT_START = '2026-04-02';
 
   constructor(
     private readonly configService: ConfigService,
@@ -364,23 +368,77 @@ export class AdminService {
     const previousStatus = project.status;
     const previousOverrideHours = project.overrideHours;
 
+    // Block re-reviewing an already-approved project. Reviewers must send to
+    // "changes needed" first (which claws back pipes and zeroes hours) before
+    // re-approving. This prevents:
+    //   - duplicate Airtable rows on accidental double-approve clicks
+    //   - inflate-on-re-approve where a reviewer raises overrideHours on a
+    //     project that's already paid out, granting extra pipes
+    if (previousStatus === 'approved' && status === 'approved') {
+      throw new BadRequestException(
+        'Project is already approved. Send to "changes needed" first if you need to re-review.',
+      );
+    }
+
     // Find the latest unreviewed submission for this project
     const submission = await this.submissionRepo.findOne({
       where: { projectId, status: 'unreviewed' },
       order: { createdAt: 'DESC' },
     });
 
-    // 1. Update project status and hours
+    // 1. Update project status and hours.
+    //
+    // On approval, the reviewer's submitted overrideHours/internalHours are the
+    // DELTA for THIS submission — new work since the last approval — and are
+    // ADDED on top of the project's existing approved hours, never overwriting.
+    // For initial ships project.overrideHours is 0, so the delta becomes the
+    // cumulative; for reships the delta accumulates on top of prior approvals.
+    // After approved → changes_needed (which wipes hours/claws back pipes), the
+    // project is back at 0, so a follow-up approval starts fresh from the delta.
     project.status = status;
-    if (overrideHours !== null && overrideHours !== undefined) {
-      project.overrideHours = Math.round(overrideHours * 10) / 10;
-    }
-    if (internalHours !== null && internalHours !== undefined) {
-      project.internalHours = Math.round(internalHours * 10) / 10;
+    if (status === 'approved') {
+      if (overrideHours !== null && overrideHours !== undefined) {
+        const delta = Math.round(overrideHours * 10) / 10;
+        project.overrideHours = Math.round(((project.overrideHours ?? 0) + delta) * 10) / 10;
+      }
+      if (internalHours !== null && internalHours !== undefined) {
+        const internalDelta = Math.round(internalHours * 10) / 10;
+        project.internalHours = Math.round(((project.internalHours ?? 0) + internalDelta) * 10) / 10;
+      }
     }
 
-    // overrideHours is the cumulative TOTAL approved hours for this project,
-    // not a delta since the last approval. Validate the post-update value:
+    // Hackatime cap: reviewer cannot approve more new hours than the user has
+    // actually logged in Hackatime since the last approval (with a 0.5h buffer
+    // for rounding). This refetches Hackatime server-side at approval time so a
+    // tampered request body can't bypass it.
+    if (
+      status === 'approved' &&
+      overrideHours !== null &&
+      overrideHours !== undefined &&
+      overrideHours > 0
+    ) {
+      try {
+        const ht = await this.getProjectHackatime(projectId, false);
+        const currentHackatime = ht?.totalHours ?? 0;
+        const previousProjectHours = previousOverrideHours ?? 0;
+        const allowedDelta = currentHackatime - previousProjectHours + 0.5;
+        const submittedDelta = Math.round(overrideHours * 10) / 10;
+        if (submittedDelta > allowedDelta) {
+          const hackatimeDelta = Math.round((currentHackatime - previousProjectHours) * 10) / 10;
+          throw new BadRequestException(
+            `Cannot approve ${submittedDelta}h of new work — Hackatime shows only ${hackatimeDelta}h of new time since last approval. Reduce the approved hours, or send to "changes needed" if the hours look wrong.`,
+          );
+        }
+      } catch (e) {
+        if (e instanceof BadRequestException) throw e;
+        // Hackatime fetch failed for an unrelated reason — log and proceed,
+        // rather than blocking reviews on Hackatime outages.
+        this.logger.warn(`Hackatime cap check failed for project ${projectId}: ${e}`);
+      }
+    }
+
+    // project.overrideHours is the CUMULATIVE total approved hours for this
+    // project (sum of submission deltas across all approved ships). Validate:
     //   - status=approved + finalHours <= 0 silently zeroes pipes_granted and,
     //     because the bar suppresses overflow on approved projects, makes the
     //     user's hours appear to vanish (moaz, 2026-05-05).
@@ -392,12 +450,12 @@ export class AdminService {
       const finalHours = project.overrideHours ?? 0;
       if (finalHours <= 0) {
         throw new BadRequestException(
-          'Cannot approve a project at 0 hours. Enter the cumulative total approved hours, or use "changes needed" to reject without granting pipes.',
+          'Cannot approve a project at 0 hours. Enter a positive delta of new hours, or use "changes needed" to reject without granting pipes.',
         );
       }
       if (finalHours < (project.pipesGranted ?? 0)) {
         throw new BadRequestException(
-          `Cannot reduce approved hours to ${finalHours} — ${project.pipesGranted} pipes have already been granted on this project. Enter the cumulative total approved hours, or send to "changes needed" first to claw back pipes.`,
+          `Cannot reduce approved hours to ${finalHours} — ${project.pipesGranted} pipes have already been granted on this project. Send to "changes needed" first to claw back pipes.`,
         );
       }
     }
@@ -497,9 +555,13 @@ export class AdminService {
       this.rsvpService.updateDateField(project.user.email, 'Loops - beestApprovedProject');
     }
 
-    // 7. Push the approved project + HCA address/birthday to the Airtable Projects table
+    // 7. Push the approved project + HCA address/birthday to the Airtable Projects table.
+    // Pass the just-saved submission so the row carries this ship's DELTA hours
+    // (not the project's cumulative total). Each approval intentionally creates
+    // a new row — one per ship — so downstream consumers can sum deltas for the
+    // user's full work history.
     if (status === 'approved' && project.user?.email) {
-      this.syncApprovedProjectToAirtable(project, review).catch((err) => {
+      this.syncApprovedProjectToAirtable(project, review, submission ?? null).catch((err) => {
         this.logger.error(`Airtable Projects sync failed for ${project.id}: ${err}`);
       });
     }
@@ -510,6 +572,7 @@ export class AdminService {
   private async syncApprovedProjectToAirtable(
     project: Project,
     review: ProjectReview,
+    submission: Submission | null,
   ): Promise<void> {
     const identity = await this.hcaService.getIdentity(project.user.hcaSub);
     const address = identity?.address ?? {};
@@ -523,6 +586,12 @@ export class AdminService {
     const screenshots = [project.screenshot1Url, project.screenshot2Url]
       .filter((url): url is string => !!url)
       .map((url) => ({ url }));
+
+    // Per-ship delta hours, not the project's cumulative — each Airtable row
+    // carries the new work approved in THIS submission so downstream sums are
+    // correct across reships. Falls back to project cumulative for legacy rows
+    // (project predates the submission table).
+    const shipInternalHours = submission?.internalHours ?? project.internalHours;
 
     const fields: Record<string, any> = {
       'First Name': firstName,
@@ -539,7 +608,7 @@ export class AdminService {
       'Country': address.country,
       'ZIP / Postal Code': address.postal_code,
       'Birthday': identity?.birthdate,
-      'Override Hours Spent': project.internalHours,
+      'Override Hours Spent': shipInternalHours,
       'Override Hours Spent Justification': review.overrideJustification,
     };
 
@@ -565,9 +634,14 @@ export class AdminService {
       throw new BadRequestException('Only approved projects can be re-pushed to Airtable');
     }
 
-    // Find the latest review for this project to include override justification
+    // Find the latest review and latest approved submission for this project to
+    // include override justification and per-ship internal hours
     const latestReview = await this.reviewRepo.findOne({
       where: { projectId },
+      order: { createdAt: 'DESC' },
+    });
+    const latestApprovedSub = await this.submissionRepo.findOne({
+      where: { projectId, status: 'approved' },
       order: { createdAt: 'DESC' },
     });
 
@@ -581,6 +655,7 @@ export class AdminService {
       await this.syncApprovedProjectToAirtable(
         project,
         latestReview ?? ({} as ProjectReview),
+        latestApprovedSub ?? null,
       );
     } catch (err) {
       this.logger.error(`Airtable resync failed for project ${projectId}: ${err}`);
@@ -720,13 +795,19 @@ export class AdminService {
 
   // ── Hackatime admin lookup ──
 
-  private emptyHackatimeResult(projectId: string, user: User | null, isSuperAdmin: boolean) {
+  private emptyHackatimeResult(
+    projectId: string,
+    user: User | null,
+    isSuperAdmin: boolean,
+    project?: Project | null,
+  ) {
     return {
       projectId,
       hackatimeProjects: [],
       totalHours: 0,
       earliestHeartbeat: null,
-      previousApprovedHours: 0,
+      previousApprovedHours: project?.overrideHours ?? 0,
+      previousInternalHours: project?.internalHours ?? 0,
       trustLevel: null,
       linkedBanned: false,
       linkedEmail: null,
@@ -770,7 +851,7 @@ export class AdminService {
     const hackatimeNames: string[] = project.hackatimeProjectName ?? [];
     const user = project.user;
     if (!user) {
-      return this.emptyHackatimeResult(projectId, user, isSuperAdmin);
+      return this.emptyHackatimeResult(projectId, user, isSuperAdmin, project);
     }
 
     try {
@@ -812,7 +893,7 @@ export class AdminService {
         }
       }
       if (!hackatimeUserId) {
-        return this.emptyHackatimeResult(projectId, user, isSuperAdmin);
+        return this.emptyHackatimeResult(projectId, user, isSuperAdmin, project);
       }
 
       // 2. Get user info (trust level), projects, and Unified duplicate check in parallel
@@ -869,24 +950,74 @@ export class AdminService {
 
         if (hackatimeNames.length > 0) {
           const nameSet = new Set(hackatimeNames);
-          matched = allProjects
-            .filter((p) => nameSet.has(p.name))
-            .map((p) => {
-              const fhRaw = p.first_heartbeat ?? null;
-              let firstHeartbeat: number | null = null;
-              if (fhRaw !== null && fhRaw !== undefined) {
-                const n = typeof fhRaw === 'string' ? Number(fhRaw) : fhRaw;
-                if (Number.isFinite(n) && n > 0) {
-                  firstHeartbeat = n > 1e12 ? Math.floor(n / 1000) : Math.floor(n);
+          const matchedRaw = allProjects.filter((p) => nameSet.has(p.name));
+
+          // Fetch event-window hours from spans per project: the admin
+          // /user/projects total_duration is lifetime, which would surface
+          // pre-event hours to reviewers. end_date is padded by one day so
+          // today's spans are fully included even with timezone edges.
+          const endDatePadded = AdminService.ymdUtc(
+            new Date(Date.now() + 86400_000),
+          );
+          const spansResults = await Promise.allSettled(
+            matchedRaw.map((p) =>
+              this.hackatimeGet(
+                `/api/v1/users/${encodeURIComponent(String(hackatimeUserId))}/heartbeats/spans` +
+                  `?start_date=${AdminService.HACKATIME_EVENT_START}&end_date=${endDatePadded}` +
+                  `&project=${encodeURIComponent(p.name)}`,
+              ).then(async (r) =>
+                r.ok
+                  ? ((await r.json()) as {
+                      spans?: { start_time?: number; end_time?: number; duration?: number }[];
+                    })
+                  : null,
+              ),
+            ),
+          );
+
+          matched = matchedRaw.map((p, i) => {
+            const fhRaw = p.first_heartbeat ?? null;
+            let firstHeartbeat: number | null = null;
+            if (fhRaw !== null && fhRaw !== undefined) {
+              const n = typeof fhRaw === 'string' ? Number(fhRaw) : fhRaw;
+              if (Number.isFinite(n) && n > 0) {
+                firstHeartbeat = n > 1e12 ? Math.floor(n / 1000) : Math.floor(n);
+              }
+            }
+
+            let seconds = 0;
+            const sr = spansResults[i];
+            if (sr.status === 'fulfilled' && sr.value?.spans) {
+              for (const span of sr.value.spans) {
+                if (
+                  typeof span.duration === 'number' &&
+                  Number.isFinite(span.duration) &&
+                  span.duration > 0
+                ) {
+                  seconds += span.duration;
+                  continue;
+                }
+                if (
+                  typeof span.start_time === 'number' &&
+                  typeof span.end_time === 'number' &&
+                  Number.isFinite(span.start_time) &&
+                  Number.isFinite(span.end_time) &&
+                  span.end_time > span.start_time
+                ) {
+                  // start/end may arrive as seconds or milliseconds.
+                  const diff = span.end_time - span.start_time;
+                  seconds += diff > 1e9 ? diff / 1000 : diff;
                 }
               }
-              return {
-                name: p.name,
-                hours: Math.round(((p.total_duration ?? (p as any).total_seconds ?? 0) / 3600) * 10) / 10,
-                languages: p.languages ?? [],
-                firstHeartbeat,
-              };
-            });
+            }
+
+            return {
+              name: p.name,
+              hours: Math.round((seconds / 3600) * 10) / 10,
+              languages: p.languages ?? [],
+              firstHeartbeat,
+            };
+          });
         }
       }
 
@@ -899,13 +1030,12 @@ export class AdminService {
         .filter((t): t is number => t !== null);
       const earliestHeartbeat = heartbeatTimes.length > 0 ? Math.min(...heartbeatTimes) : null;
 
-      // Calculate previous approved hours for delta display on resubmissions
-      const lastApprovedSub = await this.submissionRepo.findOne({
-        where: { projectId, status: 'approved' },
-        order: { createdAt: 'DESC' },
-        select: ['id', 'overrideHours'],
-      });
-      const previousApprovedHours = lastApprovedSub?.overrideHours ?? 0;
+      // Currently-applied approved hours on the project (the additive base for
+      // delta-mode review UI). When a project was approved → changes_needed,
+      // these are 0 even if a historical approved submission exists, signaling
+      // the FE to switch the input back to cumulative-mode for the next review.
+      const previousApprovedHours = project.overrideHours ?? 0;
+      const previousInternalHours = project.internalHours ?? 0;
 
       return {
         projectId,
@@ -913,6 +1043,7 @@ export class AdminService {
         totalHours,
         earliestHeartbeat,
         previousApprovedHours,
+        previousInternalHours,
         trustLevel,
         linkedBanned,
         linkedEmail: isSuperAdmin ? linkedEmail : null,
@@ -931,7 +1062,8 @@ export class AdminService {
         hackatimeProjects: [],
         totalHours: 0,
         earliestHeartbeat: null,
-        previousApprovedHours: 0,
+        previousApprovedHours: project.overrideHours ?? 0,
+        previousInternalHours: project.internalHours ?? 0,
         trustLevel: null,
         linkedBanned: false,
         linkedEmail: null,
