@@ -22,12 +22,12 @@ export class ProjectReview {
   @JoinColumn({ name: 'project_id' })
   project: Project;
 
-  @Column({ name: 'reviewer_id' })
-  reviewerId: string;
+  @Column({ name: 'reviewer_id', nullable: true })
+  reviewerId: string | null;
 
-  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'reviewer_id' })
-  reviewer: User;
+  reviewer: User | null;
 
   @Column({ name: 'submission_id', nullable: true })
   submissionId: string | null;

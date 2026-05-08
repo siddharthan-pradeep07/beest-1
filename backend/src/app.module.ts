@@ -11,6 +11,7 @@ import { AdminModule } from './admin/admin.module';
 import { NewsModule } from './news/news.module';
 import { ShopModule } from './shop/shop.module';
 import { DevlogsModule } from './devlogs/devlogs.module';
+import { FraudReviewModule } from './fraud-review/fraud-review.module';
 import { User } from './entities/user.entity';
 import { Session } from './entities/session.entity';
 import { Project } from './entities/project.entity';
@@ -25,6 +26,7 @@ import { Submission } from './entities/submission.entity';
 import { ShopSuggestion } from './entities/shop-suggestion.entity';
 import { ShopSuggestionVote } from './entities/shop-suggestion-vote.entity';
 import { Devlog } from './entities/devlog.entity';
+import { FraudReview } from './entities/fraud-review.entity';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -37,7 +39,7 @@ import { HealthController } from './health.controller';
       useFactory: (config: ConfigService) => ({
         type: 'postgres',
         url: config.getOrThrow('DATABASE_URL'),
-        entities: [User, Session, Project, AuditLog, NewsItem, ProjectReview, Comment, ShopItem, Order, FulfillmentUpdate, Submission, ShopSuggestion, ShopSuggestionVote, Devlog],
+        entities: [User, Session, Project, AuditLog, NewsItem, ProjectReview, Comment, ShopItem, Order, FulfillmentUpdate, Submission, ShopSuggestion, ShopSuggestionVote, Devlog, FraudReview],
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         migrationsRun: true,
         synchronize: false,
@@ -53,6 +55,7 @@ import { HealthController } from './health.controller';
     NewsModule,
     ShopModule,
     DevlogsModule,
+    FraudReviewModule,
   ],
 })
 export class AppModule {}
