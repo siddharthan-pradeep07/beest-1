@@ -62,7 +62,7 @@
     },
     {
       q: 'I have more questions — how do I get in touch?',
-      a: 'Contact us in the #beest channel on Hack Club Slack or email euan@hackclub.com!'
+      a: 'Contact us in the #beest channel on Hack Club Slack or email beest@hackclub.com!'
     }
   ];
 </script>
@@ -87,7 +87,7 @@
   </svg>
 
   <h1>Frequently Asked Questions</h1>
-  <p class="faq-intro">I'm sure you have lots of questions! Below is the most common ones I see, but if you need more help please email euan@hackclub.com or use the dedicated slack channel #beest-help</p>
+  <p class="faq-intro">I'm sure you have lots of questions! Below is the most common ones I see, but if you need more help please email beest@hackclub.com or use the dedicated slack channel #beest-help</p>
 
   <div class="faq-list">
     {#each faqs as faq, i (faq.q)}

@@ -929,7 +929,7 @@
     { q: 'What should I bring?', a: 'A laptop, a sleeping bag, clothes, a charger, a mobile phone... A more conclusive list will be sent out closer to the event.' },
     { q: 'Do I need prior engineering or building experience?', a: 'No! Hack Club is all about learning by doing, so we welcome builders of all experience levels. We will provide resources and support to help you build your mechanical animal, and we can help you in the #beest channel on Slack!' },
     { q: 'What is a Strandbeest?', a: 'A Strandbeest is a kinetic sculpture that walks using wind power. They are made from lightweight materials like PVC pipe and can range in size from small tabletop models to large structures that can walk on the beach.' },
-    { q: 'I have more questions — how do I get in touch?', a: 'Contact us in the #beest channel on Hack Club Slack or email euan@hackclub.com!' }
+    { q: 'I have more questions — how do I get in touch?', a: 'Contact us in the #beest channel on Hack Club Slack or email beest@hackclub.com!' }
   ];
 
   const navItems = [
@@ -2270,7 +2270,7 @@
         </svg>
 
         <h2 class="faq-title">Frequently Asked Questions</h2>
-        <p class="faq-intro">I'm sure you have lots of questions! Below is the most common ones I see, but if you need more help please email euan@hackclub.com or use the dedicated slack channel #beest-help</p>
+        <p class="faq-intro">I'm sure you have lots of questions! Below is the most common ones I see, but if you need more help please email beest@hackclub.com or use the dedicated slack channel #beest-help</p>
 
         <div class="faq-list">
           {#each faqItems as faq, i (faq.q)}
