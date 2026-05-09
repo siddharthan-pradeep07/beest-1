@@ -172,7 +172,7 @@ export class ShopService {
   async listActive() {
     return this.shopRepo.find({
       where: { isActive: true },
-      order: { sortOrder: 'ASC' },
+      order: { priceHours: 'ASC' },
       select: ['id', 'name', 'description', 'detailedDescription', 'imageUrl', 'priceHours', 'stock', 'sortOrder', 'estimatedShip'],
     });
   }
