@@ -32,7 +32,7 @@ Every review also writes a `ProjectReview` row with your feedback, internal note
 
 The Hackatime context panel (visible while the project is `unreviewed` or `approved`) exists to save you from being fooled. Work through it top to bottom:
 
-- **Trust level badge**: `blue` is standard, `yellow` is warned, `red` is banned. Yellow doesn't mean reject; it means treat with double caution. Something has broken if you see red!
+- **Trust level badge**: `blue` is standard, `red` is banned. Something has broken if you see red — pass it on to me!
 
 - **Email mismatch warning**: "The linked Hackatime user does not contain this builder's email" strongly suggests a shared or alt account. Treat as a blocker and pass on to euan unless explained.
 

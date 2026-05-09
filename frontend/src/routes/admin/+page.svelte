@@ -1502,7 +1502,9 @@
 									{:else if hackatimeData}
 										<div class="ht-detail">
 											<div class="ht-header">
-												<span class="ht-trust">Trust Level: <strong class="trust-{hackatimeData.trustLevel ?? 'unknown'}">{{ blue: 'standard', yellow: 'warned', red: 'banned' }[hackatimeData.trustLevel?.toLowerCase() ?? ''] ?? hackatimeData.trustLevel ?? 'unknown'}</strong></span>
+												{@const rawTrust = hackatimeData.trustLevel?.toLowerCase() ?? ''}
+												{@const displayTrust = !isSuperAdmin && rawTrust === 'yellow' ? 'blue' : rawTrust}
+												<span class="ht-trust">Trust Level: <strong class="trust-{displayTrust || 'unknown'}">{{ blue: 'standard', yellow: 'warned', red: 'banned' }[displayTrust] ?? hackatimeData.trustLevel ?? 'unknown'}</strong></span>
 												<span class="ht-total">{hackatimeData.totalHours}h total</span>
 												{#if hackatimeData.earliestHeartbeat}
 													<span class="ht-earliest">first heartbeat: {new Date(hackatimeData.earliestHeartbeat * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
