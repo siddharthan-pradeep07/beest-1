@@ -606,6 +606,7 @@
 		stock: number | null;
 		sortOrder: number;
 		isActive: boolean;
+		isFeatured: boolean;
 		estimatedShip: string | null;
 	}
 	let shopItemsList: ShopItemAdmin[] = $state([]);
@@ -620,6 +621,7 @@
 	let newShopStock = $state('');
 	let newShopShip = $state('');
 	let newShopActive = $state(true);
+	let newShopFeatured = $state(false);
 	let dragIdx: number | null = $state(null);
 	let dragOverIdx: number | null = $state(null);
 
@@ -648,7 +650,8 @@
 					priceHours: newShopPrice,
 					stock: newShopStock.trim() === '' ? null : parseInt(newShopStock),
 					estimatedShip: newShopShip.trim() || null,
-					isActive: newShopActive
+					isActive: newShopActive,
+					isFeatured: newShopFeatured
 				})
 			});
 			if (res.ok) {
@@ -660,6 +663,7 @@
 				newShopStock = '';
 				newShopShip = '';
 				newShopActive = true;
+				newShopFeatured = false;
 				await loadShop();
 			}
 		} finally {
@@ -682,7 +686,8 @@
 					priceHours: editingShop.priceHours,
 					stock: editingShop.stock,
 					estimatedShip: editingShop.estimatedShip,
-					isActive: editingShop.isActive
+					isActive: editingShop.isActive,
+					isFeatured: editingShop.isFeatured
 				})
 			});
 			if (res.ok) {
@@ -1268,6 +1273,10 @@
 								<input type="checkbox" bind:checked={newShopActive} />
 								<span>Active (visible to users)</span>
 							</label>
+							<label class="shop-checkbox">
+								<input type="checkbox" bind:checked={newShopFeatured} />
+								<span>Featured (shown at the top)</span>
+							</label>
 							<button class="btn btn-add-shop" onclick={createShopItem} disabled={shopSaving || !newShopName.trim() || !newShopImage.trim() || !newShopPrice}>
 								{shopSaving ? 'Saving...' : 'Add Item'}
 							</button>
@@ -1320,6 +1329,10 @@
 												<input type="checkbox" bind:checked={editingShop.isActive} />
 												<span>Active</span>
 											</label>
+											<label class="shop-checkbox">
+												<input type="checkbox" bind:checked={editingShop.isFeatured} />
+												<span>Featured</span>
+											</label>
 											<div class="shop-edit-actions">
 												<button class="btn btn-save" onclick={saveShopEdit} disabled={shopSaving}>Save</button>
 												<button class="btn btn-cancel" onclick={() => editingShop = null}>Cancel</button>
@@ -1331,7 +1344,7 @@
 										<img src={item.imageUrl} alt={item.name} class="shop-item-thumb" />
 										<div class="shop-item-info">
 											<strong>{item.name}</strong>
-											<span class="shop-item-meta">{item.priceHours}h · {item.stock === null ? '∞' : item.stock} stock{item.estimatedShip ? ` · ${item.estimatedShip}` : ''}{!item.isActive ? ' · HIDDEN' : ''}</span>
+											<span class="shop-item-meta">{item.priceHours}h · {item.stock === null ? '∞' : item.stock} stock{item.estimatedShip ? ` · ${item.estimatedShip}` : ''}{item.isFeatured ? ' · FEATURED' : ''}{!item.isActive ? ' · HIDDEN' : ''}</span>
 										</div>
 									</div>
 									<div class="shop-item-actions">

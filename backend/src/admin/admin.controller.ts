@@ -313,6 +313,7 @@ export class AdminController {
     stock?: number | null;
     estimatedShip?: string | null;
     isActive?: boolean;
+    isFeatured?: boolean;
   }) {
     if (!body.name || !body.description || !body.imageUrl || body.priceHours == null) {
       throw new BadRequestException('name, description, imageUrl, and priceHours are required');
@@ -334,6 +335,7 @@ export class AdminController {
       stock: body.stock,
       estimatedShip: body.estimatedShip,
       isActive: body.isActive,
+      isFeatured: body.isFeatured,
     });
   }
 
@@ -365,6 +367,7 @@ export class AdminController {
       stock?: number | null;
       estimatedShip?: string | null;
       isActive?: boolean;
+      isFeatured?: boolean;
     },
   ) {
     if (body.priceHours !== undefined) {

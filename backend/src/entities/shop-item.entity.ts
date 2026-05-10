@@ -32,6 +32,9 @@ export class ShopItem {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
+  @Column({ name: 'is_featured', type: 'boolean', default: false })
+  isFeatured: boolean;
+
   @Column({ name: 'detailed_description', type: 'text', nullable: true, default: null })
   detailedDescription: string | null;
 

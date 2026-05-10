@@ -85,7 +85,7 @@
   let stickerLink = $state<string | null>(null);
 
   // Shop state
-  type ShopItemType = { id: string; name: string; description: string; detailedDescription: string | null; imageUrl: string; priceHours: number; stock: number | null; sortOrder: number; estimatedShip: string | null };
+  type ShopItemType = { id: string; name: string; description: string; detailedDescription: string | null; imageUrl: string; priceHours: number; stock: number | null; sortOrder: number; isFeatured: boolean; estimatedShip: string | null };
   let shopItems = $state<ShopItemType[]>([]);
   let shopLoading = $state(false);
   let shopLoaded = $state(false);
@@ -1926,25 +1926,54 @@
           {:else if shopItems.length === 0}
             <p class="coming-soon">No items in the shop yet.</p>
           {:else}
-            <div class="shop-grid">
-              {#each shopItems as item}
-                <button class="shop-card" onclick={() => openShopItem(item)} type="button">
-                  <div class="shop-card-img">
-                    <img src={item.imageUrl} alt={item.name} loading="lazy" decoding="async" />
-                  </div>
-                  <div class="shop-card-body">
-                    <p class="shop-card-name">{item.name}</p>
-                    <p class="shop-card-desc">{item.description}</p>
-                    <div class="shop-card-footer">
-                      <p class="shop-card-cost">{item.priceHours} Pipes</p>
-                      {#if item.stock !== null}
-                        <span class="shop-card-stock" class:low={item.stock <= 3}>{item.stock} left</span>
-                      {/if}
+            {#if shopItems.some(i => i.isFeatured)}
+              <div class="shop-featured-section">
+                <h3 class="shop-section-title">Featured</h3>
+                <div class="shop-grid shop-grid-featured">
+                  {#each shopItems.filter(i => i.isFeatured) as item}
+                    <button class="shop-card shop-card-featured" onclick={() => openShopItem(item)} type="button">
+                      <div class="shop-card-img">
+                        <img src={item.imageUrl} alt={item.name} loading="lazy" decoding="async" />
+                      </div>
+                      <div class="shop-card-body">
+                        <p class="shop-card-name">{item.name}</p>
+                        <p class="shop-card-desc">{item.description}</p>
+                        <div class="shop-card-footer">
+                          <p class="shop-card-cost">{item.priceHours} Pipes</p>
+                          {#if item.stock !== null}
+                            <span class="shop-card-stock" class:low={item.stock <= 3}>{item.stock} left</span>
+                          {/if}
+                        </div>
+                      </div>
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+            {#if shopItems.some(i => !i.isFeatured)}
+              {#if shopItems.some(i => i.isFeatured)}
+                <h3 class="shop-section-title">All Items</h3>
+              {/if}
+              <div class="shop-grid">
+                {#each shopItems.filter(i => !i.isFeatured) as item}
+                  <button class="shop-card" onclick={() => openShopItem(item)} type="button">
+                    <div class="shop-card-img">
+                      <img src={item.imageUrl} alt={item.name} loading="lazy" decoding="async" />
                     </div>
-                  </div>
-                </button>
-              {/each}
-            </div>
+                    <div class="shop-card-body">
+                      <p class="shop-card-name">{item.name}</p>
+                      <p class="shop-card-desc">{item.description}</p>
+                      <div class="shop-card-footer">
+                        <p class="shop-card-cost">{item.priceHours} Pipes</p>
+                        {#if item.stock !== null}
+                          <span class="shop-card-stock" class:low={item.stock <= 3}>{item.stock} left</span>
+                        {/if}
+                      </div>
+                    </div>
+                  </button>
+                {/each}
+              </div>
+            {/if}
           {/if}
 
           <div class="my-orders">
@@ -4837,11 +4866,38 @@
     clip-path: polygon(0% 0.5%, 2% 0%, 6% 0.5%, 10% 0%, 16% 0.4%, 22% 0%, 28% 0.5%, 34% 0%, 40% 0.4%, 46% 0%, 52% 0.5%, 58% 0%, 64% 0.4%, 70% 0%, 76% 0.5%, 82% 0%, 88% 0.4%, 94% 0%, 98% 0.5%, 100% 0%, 100% 5%, 99.4% 10%, 100% 16%, 99.5% 22%, 100% 28%, 99.4% 34%, 100% 40%, 99.5% 46%, 100% 52%, 99.4% 58%, 100% 64%, 99.5% 70%, 100% 76%, 99.4% 82%, 100% 88%, 99.5% 94%, 100% 99.5%, 98% 100%, 94% 99.5%, 88% 100%, 82% 99.6%, 76% 100%, 70% 99.5%, 64% 100%, 58% 99.6%, 52% 100%, 46% 99.5%, 40% 100%, 34% 99.6%, 28% 100%, 22% 99.5%, 16% 100%, 10% 99.6%, 6% 100%, 2% 99.5%, 0% 100%, 0% 94%, 0.5% 88%, 0% 82%, 0.6% 76%, 0% 70%, 0.5% 64%, 0% 58%, 0.6% 52%, 0% 46%, 0.5% 40%, 0% 34%, 0.6% 28%, 0% 22%, 0.5% 16%, 0% 10%, 0.6% 5%);
   }
 
+  .shop-featured-section {
+    margin-bottom: 32px;
+  }
+
+  .shop-section-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #3a3832;
+    margin: 0 0 14px 0;
+    opacity: 0.6;
+  }
+
   .shop-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 20px;
     justify-content: center;
+  }
+
+  .shop-grid-featured {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+
+  .shop-card-featured {
+    border-color: #b07d3a;
+    box-shadow: 6px 6px 0 #b07d3a;
+  }
+
+  .shop-card-featured:hover {
+    box-shadow: 9px 9px 0 #b07d3a;
   }
 
   .shop-card {
