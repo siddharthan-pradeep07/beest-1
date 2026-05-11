@@ -44,6 +44,15 @@ export class AdminService {
   private dauCache: { count: number; timestamp: number } | null = null;
   private readonly DAU_CACHE_TTL = 5 * 60 * 1000;
 
+  // Unreviewed-hours cache (60-second TTL) — each refresh fans out to one
+  // Hackatime /spans request per (unreviewed project × linked HT name), so
+  // back-to-back stats-page loads must not multiply that fan-out.
+  private unreviewedHoursCache: {
+    payload: { totalHours: number; projectCount: number };
+    timestamp: number;
+  } | null = null;
+  private readonly UNREVIEWED_HOURS_CACHE_TTL = 60 * 1000;
+
   // Signups history cache (10-minute TTL) — Airtable call is moderately expensive
   private signupsCache: {
     payload: { daily: { date: string; count: number }[]; cumulative: { date: string; count: number }[]; total: number };
@@ -1010,6 +1019,118 @@ export class AdminService {
         unifiedError: true,
       };
     }
+  }
+
+  // ── Unreviewed hours ──
+
+  /**
+   * Sum of new Hackatime hours awaiting review across every project currently
+   * in 'unreviewed' status. For resubmissions the project's previously-approved
+   * `overrideHours` is subtracted, so the number reflects only the work the
+   * reviewer actually has to evaluate (matches the per-project review UI).
+   *
+   * Hours come from event-window /spans (not lifetime totals) so pre-event
+   * Hackatime time is excluded, matching what reviewers see.
+   */
+  async getUnreviewedHours(): Promise<{ totalHours: number; projectCount: number }> {
+    if (
+      this.unreviewedHoursCache &&
+      Date.now() - this.unreviewedHoursCache.timestamp < this.UNREVIEWED_HOURS_CACHE_TTL
+    ) {
+      return this.unreviewedHoursCache.payload;
+    }
+
+    const projects = await this.projectRepo.find({
+      where: { status: 'unreviewed' },
+      relations: ['user'],
+    });
+    const projectCount = projects.length;
+
+    if (!this.hackatimeAdminKey || projects.length === 0) {
+      const payload = { totalHours: 0, projectCount };
+      this.unreviewedHoursCache = { payload, timestamp: Date.now() };
+      return payload;
+    }
+
+    // Flatten to (project, linked-name) pairs — /spans takes one project name
+    // per request. Skip projects whose owner has no Hackatime linkage; their
+    // contribution is 0 either way.
+    const rows: { hackatimeUserId: string; projectName: string; projectId: string }[] = [];
+    for (const p of projects) {
+      if (!p.user?.hackatimeUserId) continue;
+      if (!p.hackatimeProjectName || p.hackatimeProjectName.length === 0) continue;
+      for (const name of p.hackatimeProjectName) {
+        rows.push({
+          hackatimeUserId: p.user.hackatimeUserId,
+          projectName: name,
+          projectId: p.id,
+        });
+      }
+    }
+
+    const endDatePadded = AdminService.ymdUtc(new Date(Date.now() + 86400_000));
+    const secondsByProject = new Map<string, number>();
+
+    const batchSize = 10;
+    for (let i = 0; i < rows.length; i += batchSize) {
+      const batch = rows.slice(i, i + batchSize);
+      await Promise.allSettled(
+        batch.map(async (row) => {
+          try {
+            const res = await this.hackatimeGet(
+              `/api/v1/users/${encodeURIComponent(row.hackatimeUserId)}/heartbeats/spans` +
+                `?start_date=${AdminService.HACKATIME_EVENT_START}&end_date=${endDatePadded}` +
+                `&project=${encodeURIComponent(row.projectName)}`,
+            );
+            if (!res.ok) return;
+            const data = (await res.json()) as {
+              spans?: { start_time?: number; end_time?: number; duration?: number }[];
+            };
+            let seconds = 0;
+            for (const span of data.spans ?? []) {
+              if (
+                typeof span.duration === 'number' &&
+                Number.isFinite(span.duration) &&
+                span.duration > 0
+              ) {
+                seconds += span.duration;
+                continue;
+              }
+              if (
+                typeof span.start_time === 'number' &&
+                typeof span.end_time === 'number' &&
+                Number.isFinite(span.start_time) &&
+                Number.isFinite(span.end_time) &&
+                span.end_time > span.start_time
+              ) {
+                const diff = span.end_time - span.start_time;
+                seconds += diff > 1e9 ? diff / 1000 : diff;
+              }
+            }
+            secondsByProject.set(
+              row.projectId,
+              (secondsByProject.get(row.projectId) ?? 0) + seconds,
+            );
+          } catch (err) {
+            this.logger.warn(
+              `Unreviewed-hours span fetch failed for project ${row.projectId} (${row.projectName}): ${err}`,
+            );
+          }
+        }),
+      );
+    }
+
+    let totalHours = 0;
+    for (const p of projects) {
+      const hackatimeHours = (secondsByProject.get(p.id) ?? 0) / 3600;
+      const newHours = Math.max(0, hackatimeHours - (p.overrideHours ?? 0));
+      totalHours += newHours;
+    }
+    totalHours = Math.round(totalHours * 10) / 10;
+
+    const payload = { totalHours, projectCount };
+    this.unreviewedHoursCache = { payload, timestamp: Date.now() };
+    return payload;
   }
 
   // ── Daily Active Users ──

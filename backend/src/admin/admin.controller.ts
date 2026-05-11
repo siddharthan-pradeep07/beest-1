@@ -133,6 +133,12 @@ export class AdminController {
     return this.adminService.getUserFunnel();
   }
 
+  @UseGuards(SuperAdminGuard)
+  @Get('stats/unreviewed-hours')
+  getUnreviewedHours() {
+    return this.adminService.getUnreviewedHours();
+  }
+
   // ── Projects ──
 
   @UseGuards(ReviewerGuard)

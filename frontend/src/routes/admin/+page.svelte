@@ -358,6 +358,19 @@
 	const totalUsers = $derived(users.length);
 	const totalHackatime = $derived(users.filter(u => u.hackatimeConnected).length);
 
+	let unreviewedHours = $state<{ totalHours: number; projectCount: number } | null>(null);
+	let unreviewedHoursLoading = $state(false);
+
+	async function loadUnreviewedHours() {
+		unreviewedHoursLoading = true;
+		try {
+			const res = await fetch('/api/admin/stats/unreviewed-hours');
+			if (res.ok) unreviewedHours = await res.json();
+		} finally {
+			unreviewedHoursLoading = false;
+		}
+	}
+
 	let filteredUsers = $derived.by(() => {
 		let result = users;
 		if (permsFilter) {
@@ -896,7 +909,7 @@
 			return;
 		}
 		if (activeTab === 'users') { loadUsers(); }
-		if (activeTab === 'stats') { loadUsers(); }
+		if (activeTab === 'stats') { loadUsers(); if (isSuperAdmin) loadUnreviewedHours(); }
 		if (activeTab === 'news') loadNews();
 		if (activeTab === 'projects') loadProjects();
 		if (activeTab === 'shop') loadShop();
@@ -1153,6 +1166,25 @@
 						<span class="stat-value">{totalHackatime}</span>
 						<span class="stat-label">Hackatime Linked</span>
 					</div>
+					{#if isSuperAdmin}
+						<div class="stat-card" title="New Hackatime hours awaiting review across all unreviewed projects (excludes hours already approved on prior submissions). Cached for 60s.">
+							<span class="stat-value">
+								{#if unreviewedHours}
+									{unreviewedHours.totalHours.toFixed(1)}
+								{:else if unreviewedHoursLoading}
+									…
+								{:else}
+									—
+								{/if}
+							</span>
+							<span class="stat-label">
+								Unreviewed Hours
+								{#if unreviewedHours}
+									<span class="stat-sub"> ({unreviewedHours.projectCount} project{unreviewedHours.projectCount === 1 ? '' : 's'})</span>
+								{/if}
+							</span>
+						</div>
+					{/if}
 				</div>
 				<div class="stats-grid">
 					<DauChart />
@@ -1992,6 +2024,10 @@
 		font-size: 0.8rem;
 		color: #888;
 		margin-top: 0.25rem;
+	}
+
+	.stat-sub {
+		color: #666;
 	}
 
 	.users-toolbar {
