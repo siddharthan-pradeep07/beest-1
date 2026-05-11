@@ -1329,6 +1329,7 @@ export class AdminService {
     stock?: number | null;
     estimatedShip?: string | null;
     isActive?: boolean;
+    isFeatured?: boolean;
   }): Promise<ShopItem> {
     const maxOrder = await this.shopRepo
       .createQueryBuilder('s')
@@ -1345,6 +1346,7 @@ export class AdminService {
       stock: data.stock ?? null,
       estimatedShip: data.estimatedShip ?? null,
       isActive: data.isActive ?? true,
+      isFeatured: data.isFeatured ?? false,
       sortOrder,
     });
     return this.shopRepo.save(item);
@@ -1359,6 +1361,7 @@ export class AdminService {
     stock?: number | null;
     estimatedShip?: string | null;
     isActive?: boolean;
+    isFeatured?: boolean;
   }): Promise<ShopItem> {
     const item = await this.shopRepo.findOne({ where: { id } });
     if (!item) throw new NotFoundException('Shop item not found');
@@ -1370,6 +1373,7 @@ export class AdminService {
     if (data.stock !== undefined) item.stock = data.stock;
     if (data.estimatedShip !== undefined) item.estimatedShip = data.estimatedShip;
     if (data.isActive !== undefined) item.isActive = data.isActive;
+    if (data.isFeatured !== undefined) item.isFeatured = data.isFeatured;
     return this.shopRepo.save(item);
   }
 
