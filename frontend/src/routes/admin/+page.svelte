@@ -74,7 +74,7 @@
 		createdAt: string;
 		updatedAt: string;
 		user: { id: string; name: string | null; slackId: string | null };
-		latestSubmission: { id: string; changeDescription: string | null; minHoursConfirmed: boolean; status: string; createdAt: string } | null;
+		latestSubmission: { id: string; changeDescription: string | null; minHoursConfirmed: boolean; reviewerNote: string | null; status: string; createdAt: string } | null;
 	}
 
 	interface StatusCounts {
@@ -1693,6 +1693,13 @@
 											<span class="proj-info-value">Confirmed 3+ hours since last ship</span>
 										</div>
 									{/if}
+								{/if}
+
+								{#if selectedProject.latestSubmission?.reviewerNote}
+									<div class="proj-info-row">
+										<span class="proj-info-label">Note to Reviewer:</span>
+										<span class="proj-info-value" style="white-space: pre-wrap">{selectedProject.latestSubmission.reviewerNote}</span>
+									</div>
 								{/if}
 
 								{#if selectedProject.status === 'unreviewed' || selectedProject.status === 'approved'}

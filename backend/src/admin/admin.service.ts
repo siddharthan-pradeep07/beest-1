@@ -357,6 +357,7 @@ export class AdminService {
             id: latestSub.id,
             changeDescription: latestSub.changeDescription,
             minHoursConfirmed: latestSub.minHoursConfirmed,
+            reviewerNote: latestSub.reviewerNote,
             status: latestSub.status,
             createdAt: latestSub.createdAt,
           } : null,

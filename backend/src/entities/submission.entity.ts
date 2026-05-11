@@ -34,6 +34,9 @@ export class Submission {
   @Column({ name: 'min_hours_confirmed', default: false })
   minHoursConfirmed: boolean;
 
+  @Column({ type: 'text', name: 'reviewer_note', nullable: true })
+  reviewerNote: string | null;
+
   @Column({ length: 20, default: 'unreviewed' })
   status: string; // 'unreviewed' | 'approved' | 'changes_needed'
 

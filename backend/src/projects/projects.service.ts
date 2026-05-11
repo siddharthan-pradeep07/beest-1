@@ -455,11 +455,13 @@ export class ProjectsService {
 
     if (dto.status === 'unreviewed') {
       // Create a submission record for this review request
+      const reviewerNote = this.validateOptionalString(dto.reviewerNote, 'reviewerNote', 1000);
       const submission = this.submissionRepo.create({
         projectId: project.id,
         userId,
         changeDescription: null,
         minHoursConfirmed: false,
+        reviewerNote,
         status: 'unreviewed',
       });
       await this.submissionRepo.save(submission);
@@ -525,6 +527,7 @@ export class ProjectsService {
     hcaSub: string,
     changeDescription: string,
     minHoursConfirmed: boolean,
+    reviewerNote?: string | null,
     impersonatorName?: string,
   ) {
     const project = await this.projectRepo.findOne({
@@ -572,11 +575,13 @@ export class ProjectsService {
     await this.projectRepo.save(project);
 
     // Create a submission record
+    const cleanReviewerNote = this.validateOptionalString(reviewerNote, 'reviewerNote', 1000);
     const submission = this.submissionRepo.create({
       projectId: project.id,
       userId,
       changeDescription: cleanDesc,
       minHoursConfirmed: true,
+      reviewerNote: cleanReviewerNote,
       status: 'unreviewed',
     });
     await this.submissionRepo.save(submission);

@@ -200,7 +200,7 @@ export class ProjectsController {
   async resubmit(
     @Param('id') id: string,
     @Req() req: Request,
-    @Body() body: { changeDescription?: string; minHoursConfirmed?: boolean },
+    @Body() body: { changeDescription?: string; minHoursConfirmed?: boolean; reviewerNote?: string | null },
   ) {
     const user = (req as any).user;
     if (!user?.uid) throw new UnauthorizedException('No user identity');
@@ -213,6 +213,7 @@ export class ProjectsController {
       user.sub,
       body.changeDescription,
       body.minHoursConfirmed === true,
+      body.reviewerNote ?? null,
       user.impersonator_name,
     );
   }

@@ -201,10 +201,12 @@
   let canConfirmReview = $derived(checkOpenSource && checkDemoable && checkReadme && checkHackatime && checkStartedOrUpdated && !submitting);
   let reviewSubmitted = $state(false);
   let reviewSubmittedName = $state('');
+  let reviewerNote = $state('');
 
   // Resubmit state (approved projects)
   let resubmitChangeDesc = $state('');
   let resubmitMinHours = $state(false);
+  let resubmitReviewerNote = $state('');
   let resubmitLoading = $state(false);
 
   // Shipping eligibility
@@ -246,8 +248,10 @@
     checkReadme = false;
     checkHackatime = false;
     checkStartedOrUpdated = false;
+    reviewerNote = '';
     resubmitChangeDesc = '';
     resubmitMinHours = false;
+    resubmitReviewerNote = '';
     resubmitLoading = false;
     editingProjectReviews = [];
     editingProjectReviewsLoading = false;
@@ -285,6 +289,7 @@
         body: JSON.stringify({
           changeDescription: resubmitChangeDesc.trim(),
           minHoursConfirmed: resubmitMinHours,
+          reviewerNote: resubmitReviewerNote.trim() || null,
         })
       });
       const data = await res.json().catch(() => ({}));
@@ -754,7 +759,10 @@
       const res = await fetch(`/api/projects/${reviewProject.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'unreviewed' })
+        body: JSON.stringify({
+          status: 'unreviewed',
+          reviewerNote: reviewerNote.trim() || null,
+        })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -1394,6 +1402,19 @@
               <span>I have worked for at least 3 hours since the last ship</span>
             </label>
 
+            <label class="resubmit-label" for="resubmit-reviewer-note">Note to reviewer <span class="form-caption-inline">(optional)</span></label>
+            <textarea
+              id="resubmit-reviewer-note"
+              class="form-input form-textarea resubmit-textarea"
+              maxlength={1000}
+              placeholder="Anything you'd like the reviewer to know? (context, caveats, where to start, etc.)"
+              bind:value={resubmitReviewerNote}
+            ></textarea>
+            <div class="form-caption-row">
+              <span class="form-caption">Visible only to reviewers</span>
+              <span class="form-charcount" class:over={resubmitReviewerNote.length >= 1000}>{resubmitReviewerNote.length}/1000</span>
+            </div>
+
             {#if formError}
               <p class="form-error">{formError}</p>
             {/if}
@@ -1753,6 +1774,22 @@
             <span>I started this project later than April 2nd, 2026, or shipped a significant update to an old project</span>
           </label>
         </div>
+
+        <div class="reviewer-note-field">
+          <label class="resubmit-label" for="reviewer-note">Note to reviewer <span class="form-caption-inline">(optional)</span></label>
+          <textarea
+            id="reviewer-note"
+            class="form-input form-textarea resubmit-textarea"
+            maxlength={1000}
+            placeholder="Anything you'd like the reviewer to know? (context, caveats, where to start, etc.)"
+            bind:value={reviewerNote}
+          ></textarea>
+          <div class="form-caption-row">
+            <span class="form-caption">Visible only to reviewers</span>
+            <span class="form-charcount" class:over={reviewerNote.length >= 1000}>{reviewerNote.length}/1000</span>
+          </div>
+        </div>
+
         {#if formError}
           <p class="form-error">{formError}</p>
         {/if}
@@ -3946,6 +3983,17 @@
   .resubmit-btn {
     font-size: 18px;
     padding: 14px 36px;
+  }
+
+  .reviewer-note-field {
+    margin-top: 24px;
+    text-align: left;
+  }
+
+  .form-caption-inline {
+    font-size: 0.85em;
+    opacity: 0.7;
+    font-weight: normal;
   }
 
   .review-tooltip {

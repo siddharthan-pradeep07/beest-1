@@ -11,4 +11,5 @@ export class UpdateProjectDto {
   otherHcProgram?: string | null;
   aiUse?: string | null;
   status?: string;
+  reviewerNote?: string | null;
 }
