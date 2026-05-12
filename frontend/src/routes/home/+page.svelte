@@ -2416,7 +2416,6 @@
                 type="text"
                 class="form-input devlog-input"
                 maxlength={DEVLOG_TITLE_MAX}
-                placeholder="e.g. Soldered the headers and got the OLED working"
                 bind:value={devlogTitle}
               />
               <div class="form-caption-row">
@@ -2430,7 +2429,6 @@
                 id="devlog-text"
                 class="form-input form-textarea devlog-textarea"
                 maxlength={DEVLOG_TEXT_MAX}
-                placeholder={"Wired up the IMU, debugged the I2C addressing for an hour, ended up resoldering pin 4..."}
                 bind:value={devlogText}
               ></textarea>
               <div class="form-caption-row">
