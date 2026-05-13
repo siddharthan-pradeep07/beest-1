@@ -7,6 +7,7 @@
 		linkedHackatime: number;
 		submittedProject: number;
 		approvedProject: number;
+		madeOrder: number;
 	}
 
 	let payload = $state<FunnelPayload | null>(null);
@@ -24,7 +25,8 @@
 			{ label: 'Logged in', count: payload.loggedIn },
 			{ label: 'Hackatime synced', count: payload.linkedHackatime },
 			{ label: 'Submitted project', count: payload.submittedProject },
-			{ label: 'Approved project', count: payload.approvedProject }
+			{ label: 'Approved project', count: payload.approvedProject },
+			{ label: 'Made an order', count: payload.madeOrder }
 		];
 	});
 

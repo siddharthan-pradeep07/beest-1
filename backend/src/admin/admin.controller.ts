@@ -197,10 +197,10 @@ export class AdminController {
     }
 
     // Reviewer must add their own reasoning beyond the auto-generated template
-    // (~180 chars) — require at least 350 chars on overrideJustification for any
-    // approve/changes_needed action so reviews aren't rubber-stamped. Ban goes
-    // through banAndRejectProject below and is gated by SuperAdmin separately.
-    if (body.status === 'approved' || body.status === 'changes_needed') {
+    // (~180 chars) — require at least 350 chars on overrideJustification for an
+    // approve action so approvals aren't rubber-stamped. Rejections don't need
+    // a long justification (the feedback field carries the user-facing reason).
+    if (body.status === 'approved') {
       const justification = (body.overrideJustification ?? '').trim();
       const JUSTIFICATION_MIN = 350;
       if (justification.length < JUSTIFICATION_MIN) {

@@ -1426,10 +1426,19 @@ export class AdminService {
     linkedHackatime: number;
     submittedProject: number;
     approvedProject: number;
+    madeOrder: number;
   }> {
     const signupsHistory = await this.getSignupsHistory().catch(() => null);
 
-    const [loggedIn, linkedHackatime, submittedRaw, approvedRaw] = await Promise.all([
+    // "approvedProject" counts users with a durable approval event in the
+    // submissions table rather than users whose CURRENT project is in the
+    // 'approved' state. Project status drifts: a reviewer approval first moves
+    // the project to 'fraud_pending' (and only the fraud poller flips it to
+    // 'approved'), and an approved → changes_needed transition wipes the
+    // approved status entirely. Submissions, by contrast, are immutable history
+    // — so counting distinct users with at least one approved submission
+    // captures everyone who's ever been approved.
+    const [loggedIn, linkedHackatime, submittedRaw, approvedRaw, orderRaw] = await Promise.all([
       this.userRepo.count(),
       this.userRepo
         .createQueryBuilder('u')
@@ -1439,10 +1448,14 @@ export class AdminService {
         .createQueryBuilder('p')
         .select('COUNT(DISTINCT p.user_id)', 'c')
         .getRawOne<{ c: string }>(),
-      this.projectRepo
-        .createQueryBuilder('p')
-        .select('COUNT(DISTINCT p.user_id)', 'c')
-        .where('p.status = :status', { status: 'approved' })
+      this.submissionRepo
+        .createQueryBuilder('s')
+        .select('COUNT(DISTINCT s.user_id)', 'c')
+        .where('s.status = :status', { status: 'approved' })
+        .getRawOne<{ c: string }>(),
+      this.orderRepo
+        .createQueryBuilder('o')
+        .select('COUNT(DISTINCT o.user_id)', 'c')
         .getRawOne<{ c: string }>(),
     ]);
 
@@ -1452,6 +1465,7 @@ export class AdminService {
       linkedHackatime,
       submittedProject: Number(submittedRaw?.c ?? 0),
       approvedProject: Number(approvedRaw?.c ?? 0),
+      madeOrder: Number(orderRaw?.c ?? 0),
     };
   }
 
