@@ -2325,22 +2325,23 @@
                 <span class="lb-rank">{i + 1}</span>
                 <span class="lb-name skeleton-text"></span>
                 <span class="lb-hours skeleton-text short"></span>
-             </div>
-           {/each}
-         {:else if leaderboard.length > 0}
-           {#each leaderboard.slice(0, leaderboardVisible) as entry, i}
-             <div class="leaderboard-row" class:top-three={i < 3}>
-               <span class="lb-rank">{i + 1}</span>
-               <span class="lb-name">{entry.name}</span>
-               <span class="lb-hours">{Math.round(entry.hours * 10) / 10}h</span>
-             </div>
-          {/each}
-          {#if leaderboardVisible < leaderboard.length}
+              </div>
+            {/each}
+          {:else if leaderboard.length > 0}
+            {#each leaderboard.slice(0, leaderboardVisible) as entry, i}
+              <div class="leaderboard-row" class:top-three={i < 3}>
+                <span class="lb-rank">{i + 1}</span>
+                <span class="lb-name">{entry.name}</span>
+                <span class="lb-hours">{Math.round(entry.hours * 10) / 10}h</span>
+              </div>
+            {/each}
+            {#if leaderboardVisible < leaderboard.length}
               <button
+                type="button"
                 class="lb-show-more"
                 onclick={() => leaderboardVisible += 10}>
                 Show more ({Math.min(10, leaderboard.length - leaderboardVisible)} more)
-             </button>
+              </button>
             {/if}
           {/if}
         </div>
@@ -6828,17 +6829,17 @@
     width: 100%;
     max-width: 600px;
     transition: background 150ms ease, border-color 150ms ease, transform 0.1s ease, border-bottom-width 0.1s ease;
-   }
+  }
 
-   .lb-show-more:hover {
+  .lb-show-more:hover {
     background: rgba(230, 244, 254, 0.06);
     border-color: rgba(230, 244, 254, 0.35);
-   }
+  }
 
   .lb-show-more:active {
     transform: translateY(3px);
     border-bottom-width: 2px;
-   }
+  }
 
   .skeleton-text {
     display: inline-block;
