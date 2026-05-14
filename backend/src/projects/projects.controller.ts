@@ -231,6 +231,15 @@ export class ProjectsController {
 
   @Throttle({ default: { limit: 30, ttl: 60000 } })
   @UseGuards(JwtAuthGuard)
+  @Get(':id/queue-position')
+  async queuePosition(@Param('id') id: string, @Req() req: Request) {
+    const userId = (req as any).user?.uid;
+    if (!userId) throw new UnauthorizedException('No user identity');
+    return this.projectsService.getQueuePosition(id, userId);
+  }
+
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @UseGuards(JwtAuthGuard)
   @Get(':id/reviews')
   async getReviews(@Param('id') id: string, @Req() req: Request) {
     const userId = (req as any).user?.uid;

@@ -41,6 +41,7 @@
   type ProjectReview = { id: string; status: 'approved' | 'changes_needed'; feedback: string | null; reviewerName: string | null; createdAt: string };
   let editingProjectReviews = $state<ProjectReview[]>([]);
   let editingProjectReviewsLoading = $state(false);
+  let editingProjectQueue = $state<{ total: number; position: number } | null>(null);
 
   let projectName = $state('');
   let projectDesc = $state('');
@@ -256,6 +257,20 @@
     resubmitLoading = false;
     editingProjectReviews = [];
     editingProjectReviewsLoading = false;
+    editingProjectQueue = null;
+  }
+
+  async function fetchProjectQueue(projectId: string) {
+    editingProjectQueue = null;
+    try {
+      const res = await fetch(`/api/projects/${projectId}/queue-position`);
+      if (res.ok) {
+        const data = await res.json();
+        if (typeof data?.total === 'number' && typeof data?.position === 'number') {
+          editingProjectQueue = { total: data.total, position: data.position };
+        }
+      }
+    } catch { /* silent */ }
   }
 
   async function fetchProjectReviews(projectId: string) {
@@ -346,6 +361,9 @@
     resetForm();
     editingProject = project;
     fetchProjectReviews(project.id);
+    if (project.status === 'unreviewed') {
+      fetchProjectQueue(project.id);
+    }
     projectName = project.name ?? '';
     projectDesc = project.description ?? '';
     projectType = project.projectType ?? '';
@@ -1640,9 +1658,18 @@
         {#if editingProject?.status === 'unreviewed'}
           <div class="in-review-notice">
             <p class="in-review-text">This project is currently in review. You can still work on it and track hours, but you can't resubmit until it's been reviewed.</p>
+            {#if editingProjectQueue}
+              <p class="in-review-queue">
+                Queue position: <strong>{editingProjectQueue.position}</strong> of <strong>{editingProjectQueue.total}</strong>
+              </p>
+            {/if}
             <button class="form-btn-draft" onclick={() => convertToDraft(editingProject.id)}>
               Convert to Draft
             </button>
+          </div>
+        {:else if editingProject?.status === 'fraud_pending'}
+          <div class="in-review-notice">
+            <p class="in-review-text">This project has been reviewed and is awaiting fraud checks. You'll be notified once the fraud team finishes their review.</p>
           </div>
         {/if}
         <div class="form-actions">
@@ -3740,6 +3767,15 @@
     margin: 0;
     font-family: "Courier New", monospace;
     font-size: 14px;
+    color: #cbc1ae;
+    line-height: 1.4;
+    text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.3);
+  }
+
+  .in-review-queue {
+    margin: 8px 0 0;
+    font-family: "Courier New", monospace;
+    font-size: 13px;
     color: #cbc1ae;
     line-height: 1.4;
     text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.3);

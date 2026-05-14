@@ -140,6 +140,49 @@ export class ProjectsService {
     return safe;
   }
 
+  /**
+   * Returns the size of the review queue (all projects with status='unreviewed')
+   * and this project's position within it, where 1 = next to be reviewed.
+   * Position is derived from the project's latest 'unreviewed' submission's
+   * createdAt — that's the moment the project entered the queue. Projects
+   * with no submission row fall back to ranking last.
+   */
+  async getQueuePosition(projectId: string, userId: string) {
+    const project = await this.projectRepo.findOne({
+      where: { id: projectId, userId },
+      select: ['id', 'status'],
+    });
+    if (!project) throw new NotFoundException('Project not found');
+    if (project.status !== 'unreviewed') {
+      throw new BadRequestException('Project is not awaiting review');
+    }
+
+    const total = await this.projectRepo.count({ where: { status: 'unreviewed' } });
+
+    const sub = await this.submissionRepo.findOne({
+      where: { projectId, status: 'unreviewed' },
+      order: { createdAt: 'DESC' },
+      select: ['createdAt'],
+    });
+    if (!sub) return { total, position: total };
+
+    const result: { count: number }[] = await this.projectRepo.query(
+      `
+        SELECT COUNT(*)::int AS count
+        FROM projects p
+        WHERE p.status = 'unreviewed'
+          AND (
+            SELECT MAX(s.created_at)
+            FROM submissions s
+            WHERE s.project_id = p.id AND s.status = 'unreviewed'
+          ) <= $1
+      `,
+      [sub.createdAt],
+    );
+    const position = Number(result[0]?.count ?? total);
+    return { total, position };
+  }
+
   async findByUser(userId: string) {
     const projects = await this.projectRepo.find({
       where: { userId },
