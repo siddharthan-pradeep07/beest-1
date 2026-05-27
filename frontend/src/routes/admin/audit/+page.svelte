@@ -433,11 +433,13 @@
 	.paper {
 		width: 100%;
 		max-width: 920px;
+		min-width: 0;
 		background: var(--surface);
 		border: 1px solid var(--border);
 		border-radius: 0.6rem;
 		display: flex;
 		flex-direction: column;
+		overflow: hidden;
 	}
 	.sec { padding: 1.8rem 1.5rem; border-top: 1px solid var(--border); }
 	.sec:first-child { border-top: none; }
@@ -486,8 +488,21 @@
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 	}
-	.meta dd { margin: 0; color: var(--text); font-size: 0.88rem; line-height: 1.45; }
-	.meta code { background: var(--surface-2); padding: 0.05rem 0.35rem; border-radius: 0.3rem; font-size: 0.8rem; }
+	.meta dd {
+		margin: 0;
+		color: var(--text);
+		font-size: 0.88rem;
+		line-height: 1.45;
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+	.meta code {
+		background: var(--surface-2);
+		padding: 0.05rem 0.35rem;
+		border-radius: 0.3rem;
+		font-size: 0.8rem;
+		word-break: break-all;
+	}
 
 	.approver { margin: 0 0 0.5rem; font-size: 0.78rem; color: var(--text-muted); }
 	blockquote {
