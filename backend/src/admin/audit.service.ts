@@ -15,11 +15,13 @@ import { AuditLogService } from '../audit-log/audit-log.service';
 import { RsvpService } from '../rsvp/rsvp.service';
 import { ProjectAirtableSyncService } from '../projects/project-airtable-sync.service';
 import { fetchWithTimeout } from '../fetch.util';
+import { AdminService } from './admin.service';
+import { Inject, forwardRef } from '@nestjs/common';
 
 // Beest event start — Hackatime time before this date is ignored, matching the
 // rest of the admin Hackatime tooling.
 
-export type AuditAction = 'approve' | 'rereview' | 'reject';
+export type AuditAction = 'approve' | 'rereview' | 'reject' | 'ban';
 
 export interface AuditDecisionDto {
   action: AuditAction;
@@ -29,8 +31,11 @@ export interface AuditDecisionDto {
   justification?: string | null;
   // rereview (feedback to the first reviewer, internal)
   reviewerFeedback?: string | null;
-  // reject (feedback to the user)
+  // reject + ban (feedback to the user)
   userFeedback?: string | null;
+  // ban only: caller must be Super Admin — the controller passes this through
+  // from the resolved request perms so the service can refuse non-SA bans.
+  isSuperAdmin?: boolean;
 }
 
 function parseHackatimeNames(raw: string | string[] | null | undefined): string[] {
@@ -72,6 +77,8 @@ export class AuditService {
     private readonly auditLogService: AuditLogService,
     private readonly rsvpService: RsvpService,
     private readonly airtableSync: ProjectAirtableSyncService,
+    @Inject(forwardRef(() => AdminService))
+    private readonly adminService: AdminService,
   ) {
       'HACKATIME_BASE_URL',
       'https://hackatime.hackclub.com',
@@ -95,17 +102,64 @@ export class AuditService {
     return Promise.all(projects.map((p) => this.serializeQueueItem(p)));
   }
 
+  /**
+   * Pull up to N oldest unreviewed projects into the audit queue so a super
+   * admin can clear them as one-shot reviews (skipping the first-pass stage).
+   *
+   * Constraint: only allowed when the queue is empty — this is meant to bridge
+   * a temporary first-reviewer shortage, not run as a parallel review stream.
+   * The "one-shot" property is inferred at decide-time by checking that no
+   * prior `ProjectReview` with status='approved' exists for the project; we
+   * don't tag the row, we just rely on the absence of a first-pass approval.
+   */
+  async loadUnreviewedIntoQueue(superAdminId: string, limit = 10): Promise<{ loaded: number }> {
+    const pending = await this.projectRepo.count({ where: { status: 'fraud_pending' } });
+    if (pending > 0) {
+      throw new BadRequestException(
+        `Cannot load unreviewed projects — audit queue is not empty (${pending} project${pending === 1 ? '' : 's'} still pending).`,
+      );
+    }
+
+    const safeLimit = Math.max(1, Math.min(limit, 25));
+    const candidates = await this.projectRepo.find({
+      where: { status: 'unreviewed' },
+      order: { createdAt: 'ASC' },
+      take: safeLimit,
+    });
+    if (candidates.length === 0) {
+      return { loaded: 0 };
+    }
+
+    for (const p of candidates) {
+      p.status = 'fraud_pending';
+    }
+    await this.projectRepo.save(candidates);
+
+    await this.auditLogService.log(
+      superAdminId,
+      'project_reviewed',
+      `Loaded ${candidates.length} unreviewed project${candidates.length === 1 ? '' : 's'} into the audit queue for one-shot review`,
+    );
+    this.logger.log(
+      `Super admin ${superAdminId} loaded ${candidates.length} unreviewed projects into the audit queue`,
+    );
+    return { loaded: candidates.length };
+  }
+
   private async serializeQueueItem(project: Project) {
-    const [originalApproval, submission] = await Promise.all([
-      this.reviewRepo.findOne({
-        where: { projectId: project.id, status: 'approved' },
-        order: { createdAt: 'DESC' },
-      }),
-      this.submissionRepo.findOne({
-        where: { projectId: project.id },
-        order: { createdAt: 'DESC' },
-      }),
-    ]);
+    // Submission-scoped "did the first-pass approve THIS submission?" — a
+    // re-ship of a previously-approved project whose new submission has never
+    // been approved correctly registers as one-shot when loaded.
+    const submission = await this.submissionRepo.findOne({
+      where: { projectId: project.id },
+      order: { createdAt: 'DESC' },
+    });
+    const originalApproval = submission
+      ? await this.reviewRepo.findOne({
+          where: { submissionId: submission.id, status: 'approved' },
+          order: { createdAt: 'DESC' },
+        })
+      : null;
 
     let reviewerName: string | null = null;
     if (originalApproval?.reviewerId) {
@@ -154,6 +208,10 @@ export class AuditService {
             createdAt: originalApproval.createdAt,
           }
         : null,
+      // One-shot = pulled into the queue via the SA escape hatch (no prior
+      // first-pass approval). The decide endpoint enforces stricter checks in
+      // this mode; the UI surfaces it so the SA knows they're the only review.
+      isOneShot: !originalApproval,
       submission: submission
         ? {
             id: submission.id,
@@ -195,9 +253,39 @@ export class AuditService {
         return this.returnForReReview(project, submission, superAdminId, dto);
       case 'reject':
         return this.reject(project, submission, superAdminId, dto);
+      case 'ban':
+        return this.banFromAudit(project, superAdminId, dto);
       default:
         throw new BadRequestException('Unknown action');
     }
+  }
+
+  /** Ban-and-reject — Super-Admin only. Delegates to AdminService so the ban
+   *  path stays identical to the first-pass ban. */
+  private async banFromAudit(
+    project: Project,
+    superAdminId: string,
+    dto: AuditDecisionDto,
+  ): Promise<{ success: true }> {
+    if (!dto.isSuperAdmin) {
+      throw new BadRequestException(
+        'Only Super Admins can ban from the audit panel.',
+      );
+    }
+    const feedback = (dto.userFeedback ?? '').trim();
+    if (feedback.length < 10) {
+      throw new BadRequestException(
+        'Ban feedback for the user must be at least 10 characters.',
+      );
+    }
+    await this.adminService.banAndRejectProject(
+      project.id,
+      superAdminId,
+      feedback,
+      'Banned via audit panel',
+      null,
+    );
+    return { success: true };
   }
 
   /** Final approval: grant pipes + push to Airtable (relocated from the old
@@ -208,34 +296,83 @@ export class AuditService {
     superAdminId: string,
     dto: AuditDecisionDto,
   ): Promise<{ success: true }> {
+    // One-shot mode: this *submission* has no first-pass approval, so this is
+    // the only review it will get. Tighten the justification floor and apply
+    // the same Hackatime cap the first-pass would have enforced. Submission-
+    // scoped so re-ships of previously-approved projects still register.
+    const priorApproval = submission
+      ? await this.reviewRepo.findOne({
+          where: { submissionId: submission.id, status: 'approved' },
+        })
+      : null;
+    const isOneShot = !priorApproval;
+
     const justification = (dto.justification ?? '').trim();
-    if (justification.length < 50) {
+    const minJustification = isOneShot ? 250 : 50;
+    if (justification.length < minJustification) {
       throw new BadRequestException(
-        'Approval justification must be at least 50 characters.',
+        `Approval justification must be at least ${minJustification} characters.`,
       );
     }
 
-    // Optional hours override (e.g. after excluding AI-coding time via the
-    // heartbeat pills). Treated as the FINAL cumulative approved hours. The
-    // super-admin's number is the final say, so it overwrites BOTH the
-    // user-facing overrideHours (drives pipes) AND internalHours (what
-    // syncApprovedProject pushes to Airtable's Override Hours Spent field).
+    // The SA may set overrideHours (user-facing, drives pipes) and internalHours
+    // (Airtable's "Override Hours Spent") independently. Both are treated as
+    // FINAL cumulative values, overwriting the first reviewer's numbers. If
+    // internalHours isn't supplied the existing project value is preserved,
+    // EXCEPT in one-shot mode where it defaults to the override value (no
+    // first-pass left an internalHours behind).
     if (dto.overrideHours !== null && dto.overrideHours !== undefined) {
-      const finalHours = Math.round(dto.overrideHours * 10) / 10;
-      if (!Number.isFinite(finalHours) || finalHours <= 0) {
+      const finalOverride = Math.round(dto.overrideHours * 10) / 10;
+      if (!Number.isFinite(finalOverride) || finalOverride <= 0) {
         throw new BadRequestException('overrideHours must be a positive number.');
       }
-      if (finalHours < (project.pipesGranted ?? 0)) {
+      if (finalOverride < (project.pipesGranted ?? 0)) {
         throw new BadRequestException(
-          `Cannot reduce hours to ${finalHours} — ${project.pipesGranted} pipes already granted.`,
+          `Cannot reduce hours to ${finalOverride} — ${project.pipesGranted} pipes already granted.`,
         );
       }
-      project.overrideHours = finalHours;
-      project.internalHours = finalHours;
-      if (submission) {
-        submission.overrideHours = finalHours;
-        submission.internalHours = finalHours;
+      // One-shot: enforce the same Hackatime cap the first-pass would apply.
+      // Cap = currentHackatime + 0.5h rounding buffer (previousProjectHours is
+      // 0 since first-pass never ran). Hackatime outage is logged and skipped
+      // rather than blocking the review.
+      if (isOneShot) {
+        try {
+          const ht = await this.adminService.getProjectHackatime(project.id, false);
+          const currentHackatime = ht?.totalHours ?? 0;
+          const allowedDelta = currentHackatime + 0.5;
+          if (finalOverride > allowedDelta) {
+            const hackatimeHours = Math.round(currentHackatime * 10) / 10;
+            throw new BadRequestException(
+              `Cannot approve ${finalOverride}h — Hackatime shows only ${hackatimeHours}h. Reduce the approved hours, or reject instead.`,
+            );
+          }
+        } catch (e) {
+          if (e instanceof BadRequestException) throw e;
+          this.logger.warn(
+            `One-shot Hackatime cap check failed for project ${project.id}: ${e}`,
+          );
+        }
       }
+      project.overrideHours = finalOverride;
+      if (submission) submission.overrideHours = finalOverride;
+
+      let finalInternal: number;
+      if (dto.internalHours !== null && dto.internalHours !== undefined) {
+        finalInternal = Math.round(dto.internalHours * 10) / 10;
+        if (!Number.isFinite(finalInternal) || finalInternal < 0) {
+          throw new BadRequestException('internalHours must be a non-negative number.');
+        }
+      } else {
+        finalInternal = isOneShot ? finalOverride : (project.internalHours ?? finalOverride);
+      }
+      project.internalHours = finalInternal;
+      if (submission) submission.internalHours = finalInternal;
+    } else if (isOneShot) {
+      // One-shot requires the SA to explicitly set the approved hours — the
+      // project has no first-pass-set value to inherit from.
+      throw new BadRequestException(
+        'One-shot approval requires overrideHours to be set.',
+      );
     }
 
     project.status = 'approved';

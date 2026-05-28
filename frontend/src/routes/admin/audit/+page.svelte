@@ -2,6 +2,9 @@
 	import { onMount } from 'svelte';
 	import '@fontsource/opendyslexic/400.css';
 
+	let { data } = $props<{ data: { role?: string } }>();
+	const isSuperAdmin = $derived(data?.role === 'Super Admin');
+
 	type Approval = {
 		reviewerName: string | null;
 		overrideJustification: string | null;
@@ -37,12 +40,19 @@
 			hackatimeConnected: boolean;
 		} | null;
 		originalApproval: Approval;
+		isOneShot: boolean;
 		submission: {
 			id: string;
 			changeDescription: string | null;
 			overrideHours: number | null;
 			createdAt: string;
 		} | null;
+	};
+
+	type TrustInfo = {
+		trustLevel: string | null;
+		emailMismatch: boolean;
+		totalHours: number | null;
 	};
 ;
 
@@ -54,14 +64,23 @@
 	const current = $derived<QueueItem | null>(queue[idx] ?? null);
 
 	// per-project decision state (reset on navigation)
-	let action = $state<'approve' | 'rereview' | 'reject'>('approve');
+	let action = $state<'approve' | 'rereview' | 'reject' | 'ban'>('approve');
 	let justification = $state('');
 	let reviewerFeedback = $state('');
 	let userFeedback = $state('');
 	let approveHoursInput = $state<number | null>(null);
 	let approveHoursTouched = $state(false);
+	let internalHoursInput = $state<number | null>(null);
+	let internalHoursTouched = $state(false);
 	let submitting = $state(false);
 	let submitError = $state<string | null>(null);
+	let trust = $state<TrustInfo | null>(null);
+	let trustLoading = $state(false);
+	let loadUnreviewedBusy = $state(false);
+	let loadUnreviewedError = $state<string | null>(null);
+
+	const isOneShot = $derived(!!current?.isOneShot);
+	const justificationMin = $derived(isOneShot ? 250 : 50);
 
 	let lightMode = $state(false);
 	let dyslexicFont = $state(false);
@@ -90,6 +109,7 @@
 	} | null>(null);
 
 	const baseHours = $derived(current?.overrideHours ?? 0);
+	const baseInternalHours = $derived(current?.internalHours ?? 0);
 	const scaledHours = $derived.by(() => {
 		if (
 			!filterInfo ||
@@ -103,10 +123,18 @@
 	const effectiveApproveHours = $derived(
 		approveHoursTouched ? (approveHoursInput ?? 0) : scaledHours
 	);
+	// Internal hours default: for one-shot, no first-pass set it, so default to
+	// the same value the SA picks for user-facing; for normal audits, default to
+	// the first-pass-set internalHours on the project.
+	const defaultInternalHours = $derived(isOneShot ? scaledHours : baseInternalHours);
+	const effectiveInternalHours = $derived(
+		internalHoursTouched ? (internalHoursInput ?? 0) : defaultInternalHours
+	);
 
 	// Reset / prefill the decision form whenever the visible project changes —
 	// approval justification starts as a copy of the first reviewer's text so the
-	// super admin edits on top of it.
+	// super admin edits on top of it. One-shot items have no first reviewer text,
+	// so the field stays empty.
 	$effect(() => {
 		const c = current;
 		action = 'approve';
@@ -115,10 +143,48 @@
 		userFeedback = '';
 		approveHoursInput = null;
 		approveHoursTouched = false;
+		internalHoursInput = null;
+		internalHoursTouched = false;
 		submitError = null;
 		anomalies = null;
 		filterInfo = null;
+		trust = null;
+		if (c) loadTrust(c.id);
 	});
+
+	async function loadTrust(projectId: string) {
+		trustLoading = true;
+		try {
+			const res = await fetch(`/api/admin/projects/${projectId}/hackatime`);
+			if (!res.ok) return;
+			const j = await res.json();
+			trust = {
+				trustLevel: j?.trustLevel ?? null,
+				emailMismatch: !!j?.emailMismatch,
+				totalHours: typeof j?.totalHours === 'number' ? j.totalHours : null
+			};
+		} catch {
+			// Silent — trust panel just won't render.
+		} finally {
+			trustLoading = false;
+		}
+	}
+
+	async function loadUnreviewed() {
+		if (loadUnreviewedBusy) return;
+		loadUnreviewedBusy = true;
+		loadUnreviewedError = null;
+		try {
+			const res = await fetch('/api/admin/audit/load-unreviewed', { method: 'POST' });
+			const j = await res.json().catch(() => ({}));
+			if (!res.ok) throw new Error(j.message || j.error || `HTTP ${res.status}`);
+			await loadQueue();
+		} catch (e) {
+			loadUnreviewedError = e instanceof Error ? e.message : String(e);
+		} finally {
+			loadUnreviewedBusy = false;
+		}
+	}
 
 	async function loadQueue() {
 		loading = true;
@@ -152,10 +218,16 @@
 		try {
 			let body: Record<string, unknown> = { action };
 			if (action === 'approve') {
-				body = { action, justification, overrideHours: effectiveApproveHours };
+				body = {
+					action,
+					justification,
+					overrideHours: effectiveApproveHours,
+					internalHours: effectiveInternalHours,
+				};
 			} else if (action === 'rereview') {
 				body = { action, reviewerFeedback };
 			} else {
+				// reject + ban share the userFeedback payload
 				body = { action, userFeedback };
 			}
 			const res = await fetch(`/api/admin/audit/${current.id}/decision`, {
@@ -175,9 +247,10 @@
 		}
 	}
 
-	const approveDisabled = $derived(submitting || justification.trim().length < 50 || effectiveApproveHours <= 0);
+	const approveDisabled = $derived(submitting || justification.trim().length < justificationMin || effectiveApproveHours <= 0);
 	const rereviewDisabled = $derived(submitting || reviewerFeedback.trim().length < 10);
 	const rejectDisabled = $derived(submitting || userFeedback.trim().length < 10);
+	const banDisabled = $derived(submitting || userFeedback.trim().length < 10 || !isSuperAdmin);
 
 	function fmtDate(s: string | null): string {
 		if (!s) return '—';
@@ -219,8 +292,17 @@
 		<div class="state err">Failed to load: {loadError}</div>
 	{:else if queue.length === 0}
 		<div class="state empty">
-			<h2>🎉 Queue clear</h2>
+			<h2>Queue clear</h2>
 			<p>No projects are awaiting second-pass review.</p>
+			{#if isSuperAdmin}
+				<p class="muted">Pull in up to 10 of the oldest unreviewed projects as one-shot reviews — they skip the first-pass and are decided here, by you alone.</p>
+				<button class="navbtn primary" disabled={loadUnreviewedBusy} onclick={loadUnreviewed}>
+					{loadUnreviewedBusy ? 'Loading…' : 'Load 10 unreviewed projects'}
+				</button>
+				{#if loadUnreviewedError}
+					<div class="err sub-err">{loadUnreviewedError}</div>
+				{/if}
+			{/if}
 		</div>
 	{:else if current}
 		{#key current.id}
@@ -231,6 +313,7 @@
 							<h2>{current.name}</h2>
 							<span class="badge">{current.projectType}</span>
 							{#if current.isUpdate}<span class="badge upd">update</span>{/if}
+							{#if current.isOneShot}<span class="badge oneshot" title="No first-pass review — your decision is the only one">one-shot</span>{/if}
 						</div>
 						<p class="desc">{current.description}</p>
 						<div class="links">
@@ -262,12 +345,32 @@
 						</dl>
 					</section>
 
+					{#if trust && (trust.trustLevel === 'red' || trust.trustLevel === 'yellow' || trust.emailMismatch)}
+						<section class="sec sec-trust">
+							<h3>Hackatime warnings</h3>
+							{#if trust.trustLevel === 'red'}
+								<div class="anom-row"><span class="dot red"></span> <strong>Hackatime trust: RED</strong> — Hackatime has flagged this user as untrusted.</div>
+							{:else if trust.trustLevel === 'yellow'}
+								<div class="anom-row"><span class="dot yellow"></span> <strong>Hackatime trust: yellow</strong> — Hackatime has flagged this user for caution.</div>
+							{/if}
+							{#if trust.emailMismatch}
+								<div class="anom-row"><span class="dot red"></span> <strong>Account mismatch</strong> — the linked Hackatime account's email doesn't include this builder's email. Likely a shared/alt account.</div>
+							{/if}
+						</section>
+					{:else if trustLoading}
+						<section class="sec sec-trust">
+							<p class="muted">Checking Hackatime warnings…</p>
+						</section>
+					{/if}
+
 					<section class="sec">
 						<h3>Original approval reason</h3>
 						{#if current.originalApproval}
 							<p class="approver">by {current.originalApproval.reviewerName ?? 'reviewer'} · {fmtDate(current.originalApproval.createdAt)}</p>
 							<blockquote>{current.originalApproval.overrideJustification || '(no justification recorded)'}</blockquote>
 							{#if current.originalApproval.internalNote}<p class="internal"><strong>Internal note:</strong> {current.originalApproval.internalNote}</p>{/if}
+						{:else if current.isOneShot}
+							<p class="muted">This is a one-shot review pulled from the unreviewed queue. There is no first-pass approval — your decision is final.</p>
 						{:else}
 							<p class="muted">No approval review record found.</p>
 						{/if}
@@ -281,14 +384,17 @@
 					<section class="sec sec-decision">
 						<div class="seg">
 							<button class:active={action === 'approve'} onclick={() => (action = 'approve')}>Approve</button>
-							<button class:active={action === 'rereview'} onclick={() => (action = 'rereview')}>Send for re-review</button>
+							<button class:active={action === 'rereview'} onclick={() => (action = 'rereview')}>{current.isOneShot ? 'Release to queue' : 'Send for re-review'}</button>
 							<button class:active={action === 'reject'} onclick={() => (action = 'reject')}>Reject to user</button>
+							{#if isSuperAdmin}
+								<button class:active={action === 'ban'} onclick={() => (action = 'ban')}>Fail &amp; ban</button>
+							{/if}
 						</div>
 
 						{#if submitError}<div class="err sub-err">{submitError}</div>{/if}
 
 						{#if action === 'approve'}
-							<label class="fl" for="hrs">approved hours (pipes paid out on this)</label>
+							<label class="fl" for="hrs">user-facing hours (drives pipes)</label>
 							<div class="hrs-row">
 								<input
 									id="hrs"
@@ -303,32 +409,65 @@
 										approveHoursInput = Number.isFinite(v) ? v : null;
 									}}
 								/>
-								{#if scaledHours !== baseHours}
+								{#if current.isOneShot}
+									<span class="hrs-note">no first review — set the final approved hours yourself{#if trust?.totalHours != null} (Hackatime: {trust.totalHours.toFixed(1)}h){/if}</span>
+								{:else if scaledHours !== baseHours}
 									<span class="hrs-note">first review: {baseHours}h → after exclusions {scaledHours}h</span>
 								{:else}
 									<span class="hrs-note">first review approved {baseHours}h</span>
 								{/if}
 							</div>
 
-							<label class="fl" for="just">approval justification ({justification.trim().length}/50)</label>
-							<textarea id="just" rows="5" bind:value={justification} placeholder="Why does this pass the second-pass / fraud review?"></textarea>
+							<label class="fl" for="ihrs">internal hours (Airtable "Override Hours Spent")</label>
+							<div class="hrs-row">
+								<input
+									id="ihrs"
+									type="number"
+									min="0"
+									step="0.1"
+									class="num"
+									value={internalHoursTouched ? internalHoursInput : defaultInternalHours}
+									oninput={(e) => {
+										internalHoursTouched = true;
+										const v = (e.currentTarget as HTMLInputElement).valueAsNumber;
+										internalHoursInput = Number.isFinite(v) ? v : null;
+									}}
+								/>
+								{#if current.isOneShot}
+									<span class="hrs-note">defaults to the user-facing value — adjust if you want a different number on Airtable</span>
+								{:else if baseInternalHours !== baseHours}
+									<span class="hrs-note">first review set {baseInternalHours}h internal (vs {baseHours}h user-facing)</span>
+								{:else}
+									<span class="hrs-note">first review set {baseInternalHours}h internal</span>
+								{/if}
+							</div>
+
+							<label class="fl" for="just">approval justification ({justification.trim().length}/{justificationMin}){#if current.isOneShot} <span class="oneshot-note">— stricter floor for one-shot</span>{/if}</label>
+							<textarea id="just" rows="5" bind:value={justification} placeholder={current.isOneShot ? 'You are the only reviewer — write a thorough justification.' : 'Why does this pass the second-pass / fraud review?'}></textarea>
 
 							<button class="btn approve" disabled={approveDisabled} onclick={submit}>
 								{submitting ? 'Submitting…' : `Approve & sync to Airtable`}
 							</button>
 						{:else if action === 'rereview'}
-							<p class="hint">Sends the project back to the first-review queue. The user is NOT notified — this feedback is for the first reviewer.</p>
-							<label class="fl" for="rr">what was wrong with the first review? ({reviewerFeedback.trim().length}/10)</label>
-							<textarea id="rr" rows="6" bind:value={reviewerFeedback} placeholder="Explain to the first reviewer what to re-check."></textarea>
+							<p class="hint">{current.isOneShot ? 'Releases the project back to the first-review queue. The user is not notified.' : 'Sends the project back to the first-review queue. The user is NOT notified — this feedback is for the first reviewer.'}</p>
+							<label class="fl" for="rr">{current.isOneShot ? 'note for the next reviewer' : 'what was wrong with the first review?'} ({reviewerFeedback.trim().length}/10)</label>
+							<textarea id="rr" rows="6" bind:value={reviewerFeedback} placeholder={current.isOneShot ? 'Why are you releasing this back instead of deciding?' : 'Explain to the first reviewer what to re-check.'}></textarea>
 							<button class="btn rereview" disabled={rereviewDisabled} onclick={submit}>
-								{submitting ? 'Submitting…' : 'Send back for re-review'}
+								{submitting ? 'Submitting…' : current.isOneShot ? 'Release back to queue' : 'Send back for re-review'}
 							</button>
-						{:else}
+						{:else if action === 'reject'}
 							<p class="hint">Rejects the project. The user sees this feedback as a regular "changes needed".</p>
 							<label class="fl" for="rj">feedback for the user ({userFeedback.trim().length}/10)</label>
 							<textarea id="rj" rows="6" bind:value={userFeedback} placeholder="What does the user need to know?"></textarea>
 							<button class="btn reject" disabled={rejectDisabled} onclick={submit}>
 								{submitting ? 'Submitting…' : 'Reject & send to user'}
+							</button>
+						{:else}
+							<p class="hint warn">Bans the user and rejects the project. Use sparingly — Super Admin only.</p>
+							<label class="fl" for="bn">feedback for the user ({userFeedback.trim().length}/10)</label>
+							<textarea id="bn" rows="6" bind:value={userFeedback} placeholder="Reason shown to the user when their project is rejected."></textarea>
+							<button class="btn reject" disabled={banDisabled} onclick={() => { if (confirm('Ban this user and reject their project?')) submit(); }}>
+								{submitting ? 'Submitting…' : 'Fail & ban'}
 							</button>
 						{/if}
 					</section>
@@ -466,6 +605,10 @@
 		border-radius: 999px;
 	}
 	.badge.upd { background: rgba(196, 164, 55, 0.18); color: var(--warn); }
+	.badge.oneshot { background: rgba(184, 83, 106, 0.18); color: var(--reject); }
+	.oneshot-note { color: var(--reject); font-weight: 600; }
+	.hint.warn { color: var(--reject); }
+	.sec-trust { border-left: 3px solid var(--reject); padding-left: 0.6rem; }
 	.desc { color: var(--text); line-height: 1.5; margin: 0 0 0.8rem; opacity: 0.9; }
 
 	.links { display: flex; gap: 1rem; flex-wrap: wrap; }

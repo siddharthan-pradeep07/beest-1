@@ -273,6 +273,15 @@ export class AdminController {
     return this.auditService.listQueue();
   }
 
+  // Super-admin-only escape hatch: when the audit queue is empty, pull up to
+  // 10 oldest unreviewed projects in as one-shot reviews (skips first-pass).
+  @UseGuards(SuperAdminGuard)
+  @Post('audit/load-unreviewed')
+  async auditLoadUnreviewed(@Req() req: Request) {
+    const superAdminId = (req as any).user?.uid;
+    return this.auditService.loadUnreviewedIntoQueue(superAdminId);
+  }
+
   @UseGuards(FraudReviewerGuard)
   @Post('audit/:id/decision')
   async auditDecision(
@@ -288,13 +297,20 @@ export class AdminController {
     },
     @Req() req: Request,
   ) {
-    const validActions = ['approve', 'rereview', 'reject'];
+    const validActions = ['approve', 'rereview', 'reject', 'ban'];
     if (!body.action || !validActions.includes(body.action)) {
       throw new BadRequestException(
         `action must be one of: ${validActions.join(', ')}`,
       );
     }
-    const auditorId = (req as any).user?.uid;
+    const reviewer = (req as any).user;
+    const auditorId = reviewer?.uid;
+    const isSuperAdmin = reviewer?.perms === 'Super Admin';
+    if (body.action === 'ban' && !isSuperAdmin) {
+      throw new BadRequestException(
+        'Only Super Admins can ban from the audit panel.',
+      );
+    }
     return this.auditService.decide(id, auditorId, {
       action: body.action as AuditAction,
       overrideHours: body.overrideHours ?? null,
@@ -302,6 +318,7 @@ export class AdminController {
       justification: body.justification ?? null,
       reviewerFeedback: body.reviewerFeedback ?? null,
       userFeedback: body.userFeedback ?? null,
+      isSuperAdmin,
     });
   }
 
