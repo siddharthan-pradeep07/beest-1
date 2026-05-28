@@ -47,6 +47,25 @@
 			overrideHours: number | null;
 			createdAt: string;
 		} | null;
+		priorSubmissions: PriorSubmission[];
+	};
+
+	type PriorSubmission = {
+		id: string;
+		status: string;
+		overrideHours: number | null;
+		internalHours: number | null;
+		pipesGranted: number | null;
+		changeDescription: string | null;
+		createdAt: string;
+		review: {
+			status: string;
+			overrideJustification: string | null;
+			feedback: string | null;
+			internalNote: string | null;
+			reviewerName: string | null;
+			createdAt: string;
+		} | null;
 	};
 
 	type TrustInfo = {
@@ -130,6 +149,23 @@
 	const effectiveInternalHours = $derived(
 		internalHoursTouched ? (internalHoursInput ?? 0) : defaultInternalHours
 	);
+
+	// Pipe math preview. The audit hours input is the FINAL CUMULATIVE value for
+	// this project. Backend grants floor(sum of override_hours across the user's
+	// projects) − sum(pipes_granted). previewNewPipes here is the single-project
+	// approximation (good enough for the SA's mental model); cross-project
+	// fractional rounding can shift the actual grant by ±1 pipe.
+	const pipesAlreadyPaid = $derived(current?.pipesGranted ?? 0);
+	const submissionDelta = $derived(current?.submission?.overrideHours ?? null);
+	const priorCumulative = $derived(
+		submissionDelta != null
+			? Math.round((baseHours - submissionDelta) * 10) / 10
+			: null
+	);
+	const previewNewPipes = $derived(
+		Math.max(0, Math.floor(effectiveApproveHours) - pipesAlreadyPaid),
+	);
+	const isResubmission = $derived(pipesAlreadyPaid > 0);
 
 	// Reset / prefill the decision form whenever the visible project changes —
 	// approval justification starts as a copy of the first reviewer's text so the
@@ -223,6 +259,8 @@
 					justification,
 					overrideHours: effectiveApproveHours,
 					internalHours: effectiveInternalHours,
+					// One-shot may include an optional user-facing feedback line.
+					...(isOneShot && userFeedback.trim() ? { userFeedback } : {}),
 				};
 			} else if (action === 'rereview') {
 				body = { action, reviewerFeedback };
@@ -376,6 +414,40 @@
 						{/if}
 					</section>
 
+					{#if current.priorSubmissions.length > 0}
+						<section class="sec">
+							<h3>Prior submissions <span class="muted">({current.priorSubmissions.length})</span></h3>
+							<ol class="prior-list">
+								{#each current.priorSubmissions as p (p.id)}
+									<li class="prior-item">
+										<div class="prior-head">
+											<span class="prior-status prior-status-{p.review?.status ?? p.status}">{p.review?.status ?? p.status}</span>
+											<span class="prior-date">{fmtDate(p.createdAt)}</span>
+											{#if p.overrideHours != null && p.overrideHours > 0}<span class="prior-hours">+{p.overrideHours}h{#if p.pipesGranted != null && p.pipesGranted > 0} · {p.pipesGranted} pipes{/if}</span>{/if}
+										</div>
+										{#if p.changeDescription}
+											<p class="prior-change"><strong>Change description:</strong> {p.changeDescription}</p>
+										{/if}
+										{#if p.review}
+											<p class="approver prior-reviewer">reviewed by {p.review.reviewerName ?? 'reviewer'} · {fmtDate(p.review.createdAt)}</p>
+											{#if p.review.overrideJustification}
+												<blockquote class="prior-blockquote">{p.review.overrideJustification}</blockquote>
+											{/if}
+											{#if p.review.feedback}
+												<p class="prior-feedback"><strong>Feedback to user:</strong> {p.review.feedback}</p>
+											{/if}
+											{#if p.review.internalNote}
+												<p class="internal prior-internal"><strong>Internal note:</strong> {p.review.internalNote}</p>
+											{/if}
+										{:else}
+											<p class="muted">No review record found for this submission.</p>
+										{/if}
+									</li>
+								{/each}
+							</ol>
+						</section>
+					{/if}
+
 					<section class="sec">
 						<h3>Hackatime heartbeats</h3>
 					</section>
@@ -394,7 +466,7 @@
 						{#if submitError}<div class="err sub-err">{submitError}</div>{/if}
 
 						{#if action === 'approve'}
-							<label class="fl" for="hrs">user-facing hours (drives pipes)</label>
+							<label class="fl" for="hrs">user-facing hours <span class="muted">(final cumulative total for this project — drives pipes)</span></label>
 							<div class="hrs-row">
 								<input
 									id="hrs"
@@ -444,6 +516,28 @@
 
 							<label class="fl" for="just">approval justification ({justification.trim().length}/{justificationMin}){#if current.isOneShot} <span class="oneshot-note">— stricter floor for one-shot</span>{/if}</label>
 							<textarea id="just" rows="5" bind:value={justification} placeholder={current.isOneShot ? 'You are the only reviewer — write a thorough justification.' : 'Why does this pass the second-pass / fraud review?'}></textarea>
+
+							{#if current.isOneShot}
+								<label class="fl" for="uf-approve">user-facing feedback <span class="muted">(optional — shown to the builder alongside the approval)</span></label>
+								<textarea id="uf-approve" rows="3" bind:value={userFeedback} placeholder="Optional note for the builder — what stood out, what could be tightened next time, etc."></textarea>
+							{/if}
+
+							<div class="pipe-preview">
+								<div class="pipe-preview-title">Pipe math preview</div>
+								{#if isResubmission}
+									{#if priorCumulative != null && submissionDelta != null && submissionDelta > 0}
+										<div class="pipe-row"><span class="pipe-k">Prior cumulative</span><span class="pipe-v">{priorCumulative}h</span></div>
+										<div class="pipe-row"><span class="pipe-k">First-pass delta this submission</span><span class="pipe-v">+{submissionDelta}h</span></div>
+									{/if}
+									<div class="pipe-row"><span class="pipe-k">Cumulative you're setting</span><span class="pipe-v">{effectiveApproveHours}h</span></div>
+									<div class="pipe-row"><span class="pipe-k">Pipes already paid on this project</span><span class="pipe-v">{pipesAlreadyPaid}</span></div>
+									<div class="pipe-row pipe-result"><span class="pipe-k">New pipes from this approval</span><span class="pipe-v">+{previewNewPipes}</span></div>
+								{:else}
+									<div class="pipe-row"><span class="pipe-k">Cumulative you're setting</span><span class="pipe-v">{effectiveApproveHours}h</span></div>
+									<div class="pipe-row pipe-result"><span class="pipe-k">New pipes from this approval</span><span class="pipe-v">+{previewNewPipes}</span></div>
+								{/if}
+								<p class="pipe-note">Backend grants <code>floor(sum of override_hours) − sum(pipes_granted)</code> across all the user's projects, so cross-project fractional remainders can shift the actual grant by ±1 pipe.</p>
+							</div>
 
 							<button class="btn approve" disabled={approveDisabled} onclick={submit}>
 								{submitting ? 'Submitting…' : `Approve & sync to Airtable`}
@@ -609,6 +703,24 @@
 	.oneshot-note { color: var(--reject); font-weight: 600; }
 	.hint.warn { color: var(--reject); }
 	.sec-trust { border-left: 3px solid var(--reject); padding-left: 0.6rem; }
+	.pipe-preview {
+		background: var(--surface-2);
+		border: 1px solid var(--border);
+		border-radius: 0.4rem;
+		padding: 0.7rem 0.9rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		font-size: 0.85rem;
+	}
+	.pipe-preview-title { font-weight: 600; color: var(--text); margin-bottom: 0.2rem; }
+	.pipe-row { display: flex; justify-content: space-between; gap: 1rem; }
+	.pipe-k { color: var(--text-muted); }
+	.pipe-v { color: var(--text); font-variant-numeric: tabular-nums; }
+	.pipe-result { font-weight: 700; padding-top: 0.3rem; border-top: 1px dashed var(--border); margin-top: 0.2rem; }
+	.pipe-result .pipe-v { color: var(--approve); }
+	.pipe-note { font-size: 0.75rem; color: var(--text-muted); margin: 0.3rem 0 0; line-height: 1.4; }
+	.pipe-note code { background: var(--surface); padding: 0.05rem 0.3rem; border-radius: 0.2rem; font-size: 0.85em; }
 	.desc { color: var(--text); line-height: 1.5; margin: 0 0 0.8rem; opacity: 0.9; }
 
 	.links { display: flex; gap: 1rem; flex-wrap: wrap; }
@@ -660,6 +772,48 @@
 		color: var(--text);
 	}
 	.internal { margin: 0.6rem 0 0; font-size: 0.8rem; color: var(--text-muted); }
+
+	.prior-list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.7rem;
+	}
+	.prior-item {
+		border-left: 2px solid var(--border);
+		padding: 0.4rem 0.7rem;
+		background: var(--surface-2);
+		border-radius: 0 0.3rem 0.3rem 0;
+	}
+	.prior-head {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		flex-wrap: wrap;
+		margin-bottom: 0.35rem;
+	}
+	.prior-status {
+		text-transform: uppercase;
+		font-size: 0.65rem;
+		letter-spacing: 0.05em;
+		padding: 0.1rem 0.4rem;
+		border-radius: 999px;
+		background: var(--accent-soft);
+		color: var(--accent);
+		font-weight: 700;
+	}
+	.prior-status-approved { background: rgba(74, 154, 82, 0.18); color: var(--approve); }
+	.prior-status-changes_needed { background: rgba(196, 164, 55, 0.18); color: var(--warn); }
+	.prior-status-ban { background: rgba(184, 83, 106, 0.18); color: var(--reject); }
+	.prior-date { font-size: 0.78rem; color: var(--text-muted); }
+	.prior-hours { font-size: 0.78rem; color: var(--text); font-variant-numeric: tabular-nums; }
+	.prior-change { font-size: 0.82rem; margin: 0.3rem 0; color: var(--text); }
+	.prior-reviewer { margin: 0.3rem 0 0.4rem; }
+	.prior-blockquote { font-size: 0.82rem; padding: 0.45rem 0.65rem; }
+	.prior-feedback { font-size: 0.82rem; margin: 0.4rem 0 0; color: var(--text); }
+	.prior-internal { font-size: 0.78rem; }
 
 	.anom-row {
 		display: flex;

@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Project } from '../entities/project.entity';
 import { Submission } from '../entities/submission.entity';
 import { ProjectReview } from '../entities/project-review.entity';
@@ -147,27 +147,85 @@ export class AuditService {
   }
 
   private async serializeQueueItem(project: Project) {
-    // Submission-scoped "did the first-pass approve THIS submission?" — a
-    // re-ship of a previously-approved project whose new submission has never
-    // been approved correctly registers as one-shot when loaded.
-    const submission = await this.submissionRepo.findOne({
+    // Pull every submission for this project so we can show the SA the full
+    // history (approved hours + reasons + reviewer) for resubmissions. The
+    // current submission is the newest one; everything older goes into
+    // priorSubmissions for the UI to render as a timeline.
+    const allSubmissions = await this.submissionRepo.find({
       where: { projectId: project.id },
       order: { createdAt: 'DESC' },
     });
-    const originalApproval = submission
-      ? await this.reviewRepo.findOne({
-          where: { submissionId: submission.id, status: 'approved' },
+    const submission = allSubmissions[0] ?? null;
+    const olderSubmissions = allSubmissions.slice(1);
+
+    const submissionIds = allSubmissions.map((s) => s.id);
+    const allReviews = submissionIds.length
+      ? await this.reviewRepo.find({
+          where: { submissionId: In(submissionIds) },
           order: { createdAt: 'DESC' },
         })
-      : null;
+      : [];
 
-    let reviewerName: string | null = null;
-    if (originalApproval?.reviewerId) {
-      const reviewer = await this.userRepo.findOne({
-        where: { id: originalApproval.reviewerId },
-      });
-      reviewerName = reviewer?.nickname || reviewer?.name || null;
+    const reviewsBySubmission = new Map<string, ProjectReview[]>();
+    for (const r of allReviews) {
+      if (!r.submissionId) continue;
+      const list = reviewsBySubmission.get(r.submissionId) ?? [];
+      list.push(r);
+      reviewsBySubmission.set(r.submissionId, list);
     }
+
+    // Submission-scoped one-shot detection: did the first-pass approve THIS
+    // submission? A re-ship whose new submission has never been approved
+    // correctly registers as one-shot when loaded.
+    const currentReviews = submission
+      ? reviewsBySubmission.get(submission.id) ?? []
+      : [];
+    const originalApproval =
+      currentReviews.find((r) => r.status === 'approved') ?? null;
+
+    const reviewerIds = Array.from(
+      new Set(
+        allReviews
+          .map((r) => r.reviewerId)
+          .filter((id): id is string => !!id),
+      ),
+    );
+    const reviewers = reviewerIds.length
+      ? await this.userRepo.find({ where: { id: In(reviewerIds) } })
+      : [];
+    const reviewerById = new Map(reviewers.map((u) => [u.id, u]));
+    const nameOf = (reviewerId: string | null | undefined): string | null => {
+      if (!reviewerId) return null;
+      const u = reviewerById.get(reviewerId);
+      return u?.nickname || u?.name || null;
+    };
+
+    const reviewerName = nameOf(originalApproval?.reviewerId);
+
+    const priorSubmissions = olderSubmissions.map((sub) => {
+      const subReviews = reviewsBySubmission.get(sub.id) ?? [];
+      // Latest review (already DESC sorted) — the one that decided this submission
+      const latest = subReviews[0] ?? null;
+      return {
+        id: sub.id,
+        status: sub.status,
+        overrideHours: sub.overrideHours,
+        internalHours: sub.internalHours,
+        pipesGranted: sub.pipesGranted,
+        changeDescription: sub.changeDescription,
+        createdAt: sub.createdAt,
+        review: latest
+          ? {
+              status: latest.status,
+              overrideJustification: latest.overrideJustification,
+              feedback: latest.feedback,
+              internalNote: latest.internalNote,
+              reviewerName: nameOf(latest.reviewerId),
+              createdAt: latest.createdAt,
+            }
+          : null,
+      };
+    });
 
     const user = project.user;
     return {
@@ -220,6 +278,10 @@ export class AuditService {
             createdAt: submission.createdAt,
           }
         : null,
+      // Older submissions on the same project, newest first, each with its
+      // latest review (so the SA can see history for resubmissions). Empty
+      // array for first ships.
+      priorSubmissions,
     };
   }
 
@@ -408,14 +470,19 @@ export class AuditService {
       }
     }
 
-    // Record the second-pass approval.
+    // Record the second-pass approval. One-shot approvals can carry a
+    // user-facing feedback string (the only review the user will see, so the
+    // SA may want to leave a note); regular second-pass approvals don't.
+    const approveUserFeedback = isOneShot
+      ? ((dto.userFeedback ?? '').trim() || null)
+      : null;
     const review = this.reviewRepo.create({
       projectId: project.id,
       reviewerId: superAdminId,
       submissionId: submission?.id ?? null,
       status: 'approved',
-      feedback: null,
-      internalNote: 'Second-pass (super admin) approval',
+      feedback: approveUserFeedback,
+      internalNote: isOneShot ? 'One-shot approval' : 'Second-pass (super admin) approval',
       overrideJustification: justification,
     });
     await this.reviewRepo.save(review);
