@@ -15,6 +15,7 @@ import {
 import type { Request, Response } from 'express';
 import { SuperAdminGuard } from './super-admin.guard';
 import { ReviewerGuard } from './reviewer.guard';
+import { FraudReviewerGuard } from './fraud-reviewer.guard';
 import { AdminService } from './admin.service';
 import { AuditService, type AuditAction } from './audit.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
@@ -183,9 +184,10 @@ export class AdminController {
     const reviewer = (req as any).user;
     const reviewerId = reviewer?.uid;
     const isSuperAdmin = reviewer?.perms === 'Super Admin';
+    const canBan = isSuperAdmin || reviewer?.perms === 'Fraud Reviewer';
 
-    if (body.status === 'ban' && !isSuperAdmin) {
-      throw new BadRequestException('Only Super Admins can ban users. Flag this project in your internal note and ping Euan.');
+    if (body.status === 'ban' && !canBan) {
+      throw new BadRequestException('Only Super Admins and Fraud Reviewers can ban users. Flag this project in your internal note and ping Euan.');
     }
 
     const HOURS_CAP = 500;
@@ -200,15 +202,15 @@ export class AdminController {
     }
 
     // Reviewer must add their own reasoning beyond the auto-generated template
-    // (~180 chars) — require at least 350 chars on overrideJustification for an
+    // (~180 chars) — require at least 250 chars on overrideJustification for an
     // approve action so approvals aren't rubber-stamped. Rejections don't need
     // a long justification (the feedback field carries the user-facing reason).
     if (body.status === 'approved') {
       const justification = (body.overrideJustification ?? '').trim();
-      const JUSTIFICATION_MIN = 350;
+      const JUSTIFICATION_MIN = 250;
       if (justification.length < JUSTIFICATION_MIN) {
         throw new BadRequestException(
-          `Override Justification must be at least ${JUSTIFICATION_MIN} characters — please add at least 170 characters of your own reasoning beyond the auto-generated template.`,
+          `Override Justification must be at least ${JUSTIFICATION_MIN} characters — please add at least 70 characters of your own reasoning beyond the auto-generated template.`,
         );
       }
     }
@@ -262,16 +264,16 @@ export class AdminController {
 
   // ── Admin audit queue ──
   // Projects parked in 'fraud_pending' after first-reviewer approval are queued
-  // here for a super-admin audit before pipes are paid out and the project syncs
-  // to Airtable. Super-admin only.
+  // here for a second-pass audit before pipes are paid out and the project syncs
+  // to Airtable. Open to Super Admin and Fraud Reviewer.
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FraudReviewerGuard)
   @Get('audit/queue')
   auditQueue() {
     return this.auditService.listQueue();
   }
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FraudReviewerGuard)
   @Post('audit/:id/decision')
   async auditDecision(
     @Param('id', ParseUUIDPipe) id: string,
@@ -292,8 +294,8 @@ export class AdminController {
         `action must be one of: ${validActions.join(', ')}`,
       );
     }
-    const superAdminId = (req as any).user?.uid;
-    return this.auditService.decide(id, superAdminId, {
+    const auditorId = (req as any).user?.uid;
+    return this.auditService.decide(id, auditorId, {
       action: body.action as AuditAction,
       overrideHours: body.overrideHours ?? null,
       internalHours: body.internalHours ?? null,

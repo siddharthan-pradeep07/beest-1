@@ -121,8 +121,8 @@
 	let userFacingHours = $state(0);
 
 	// Reviewer must add their own reasoning beyond the auto-generated template
-	// (~180 chars) before approving or rejecting. Server enforces ≥230 chars too.
-	const JUSTIFICATION_MIN = 350;
+	// (~180 chars) before approving or rejecting. Server enforces the same floor.
+	const JUSTIFICATION_MIN = 250;
 	let justificationOk = $derived(overrideJustification.trim().length >= JUSTIFICATION_MIN);
 	let justificationCharsRemaining = $derived(
 		Math.max(0, JUSTIFICATION_MIN - overrideJustification.trim().length),

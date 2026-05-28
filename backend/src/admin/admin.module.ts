@@ -22,6 +22,7 @@ import { AdminService } from './admin.service';
 import { AuditService } from './audit.service';
 import { SuperAdminGuard } from './super-admin.guard';
 import { ReviewerGuard } from './reviewer.guard';
+import { FraudReviewerGuard } from './fraud-reviewer.guard';
 
 @Module({
   imports: [
@@ -36,6 +37,6 @@ import { ReviewerGuard } from './reviewer.guard';
     ProjectAirtableSyncModule,
   ],
   controllers: [AdminController],
-  providers: [AdminService, AuditService, SuperAdminGuard, ReviewerGuard],
+  providers: [AdminService, AuditService, SuperAdminGuard, ReviewerGuard, FraudReviewerGuard],
 })
 export class AdminModule {}
