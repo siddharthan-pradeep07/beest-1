@@ -3,6 +3,7 @@
 	import SignupsChart from './SignupsChart.svelte';
 	import UserFunnel from './UserFunnel.svelte';
 	import TimelapsePanel from '$lib/components/admin/TimelapsePanel.svelte';
+	import CardGrantModal from '$lib/components/admin/CardGrantModal.svelte';
 	let { data } = $props();
 
 	interface UserSummary {
@@ -778,6 +779,7 @@
 		quantity: number;
 		pipesSpent: number;
 		status: string;
+		hcbCardGrantId: string | null;
 		createdAt: string;
 		updatedAt: string;
 		userName: string;
@@ -792,6 +794,32 @@
 	let fulfillmentSortBy = $state<'oldest' | 'newest'>('oldest');
 	let fulfillmentMsg = $state<Record<string, string>>({});
 	let fulfillmentActionLoading = $state('');
+
+	// HCB card grants
+	type HcbStatus = {
+		configured: boolean;
+		connected: boolean;
+		orgId: string | null;
+		connectedByEmail: string | null;
+		connectedAt: string | null;
+		expiresAt: string | null;
+	};
+	let hcbStatus = $state<HcbStatus | null>(null);
+	let grantModalOrder = $state<AdminOrder | null>(null);
+
+	async function loadHcbStatus() {
+		try {
+			const res = await fetch('/api/admin/hcb/status');
+			if (res.ok) hcbStatus = await res.json();
+		} catch {
+			/* leave null — banner just won't render */
+		}
+	}
+
+	function onGrantIssued() {
+		// Reflect the new grant + any status changes immediately.
+		loadFulfillment();
+	}
 
 	type OrderDetail = {
 		address: {
@@ -954,7 +982,7 @@
 		if (activeTab === 'news') loadNews();
 		if (activeTab === 'projects') loadProjects();
 		if (activeTab === 'shop') loadShop();
-		if (activeTab === 'fulfillment') loadFulfillment();
+		if (activeTab === 'fulfillment') { loadFulfillment(); loadHcbStatus(); }
 		if (activeTab === 'leaderboard') loadLeaderboard();
 	});
 </script>
@@ -1320,6 +1348,21 @@
 			</div>
 		{:else if activeTab === 'fulfillment'}
 			<div class="fulfillment-admin">
+				{#if hcbStatus}
+					<div class="hcb-banner" class:hcb-ok={hcbStatus.connected} class:hcb-warn={!hcbStatus.connected}>
+						{#if !hcbStatus.configured}
+							<span>⚠ HCB card grants are not configured on the server (set HCB_CLIENT_ID / HCB_ORG_ID).</span>
+						{:else if !hcbStatus.connected}
+							<span>HCB is not connected — card grants are disabled.</span>
+							<a class="btn btn-sm btn-primary" href="/api/admin/hcb/connect" data-sveltekit-reload>Connect HCB</a>
+						{:else}
+							<span>
+								✓ HCB connected{hcbStatus.orgId ? ` · org ${hcbStatus.orgId}` : ''}{hcbStatus.connectedByEmail ? ` · by ${hcbStatus.connectedByEmail}` : ''}
+							</span>
+							<a class="btn btn-sm" href="/api/admin/hcb/connect" data-sveltekit-reload>Reconnect</a>
+						{/if}
+					</div>
+				{/if}
 				<div class="fulfillment-toolbar">
 					<select bind:value={fulfillmentStatusFilter} class="users-perms-filter" onchange={() => loadFulfillment()}>
 						<option value="">All Statuses</option>
@@ -1380,6 +1423,14 @@
 										<button class="btn btn-sm btn-danger" onclick={() => refundOrder(order)} disabled={fulfillmentActionLoading === order.id}>
 											{fulfillmentActionLoading === order.id ? '...' : 'Refund'}
 										</button>
+										{#if hcbStatus?.connected}
+											<button
+												class="btn btn-sm btn-grant"
+												onclick={() => (grantModalOrder = order)}
+												disabled={!!order.hcbCardGrantId}
+												title={order.hcbCardGrantId ? `Grant already issued (${order.hcbCardGrantId})` : 'Issue an HCB card grant for this order'}
+											>{order.hcbCardGrantId ? 'Granted' : 'Card grant'}</button>
+										{/if}
 										<div class="fulfillment-msg-row">
 											<input
 												type="text"
@@ -2016,6 +2067,14 @@
 		<img src={devlogLightbox} alt="Devlog attachment full size" onclick={(e) => e.stopPropagation()} />
 		<button type="button" class="devlog-lightbox-close" onclick={closeDevlogLightbox} aria-label="Close">&times;</button>
 	</div>
+{/if}
+
+{#if grantModalOrder}
+	<CardGrantModal
+		order={grantModalOrder}
+		onClose={() => (grantModalOrder = null)}
+		onGranted={() => { grantModalOrder = null; onGrantIssued(); }}
+	/>
 {/if}
 
 <style>
@@ -4161,6 +4220,27 @@
 	.btn-merge:hover:not(:disabled) { background: rgba(205, 180, 120, 0.4); }
 	.admin-shell.light .btn-merge { background: #f5ecc8; color: #8a6a1f; border-color: #b89a4a; }
 	.admin-shell.light .btn-merge:hover:not(:disabled) { background: #f0e0a8; }
+
+	.btn-grant {
+		background: rgba(108, 217, 104, 0.18);
+		border-color: #6bd968;
+		color: #d6f5d4;
+	}
+	.btn-grant:hover:not(:disabled) { background: rgba(108, 217, 104, 0.34); }
+
+	.hcb-banner {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		flex-wrap: wrap;
+		padding: 0.6rem 0.85rem;
+		border-radius: 6px;
+		margin-bottom: 0.85rem;
+		font-size: 0.85rem;
+		border: 1px solid transparent;
+	}
+	.hcb-banner.hcb-ok { background: rgba(108, 217, 104, 0.12); border-color: rgba(108, 217, 104, 0.4); }
+	.hcb-banner.hcb-warn { background: rgba(236, 55, 80, 0.12); border-color: rgba(236, 55, 80, 0.4); }
 
 	/* light mode overrides */
 	.admin-shell.light .admin-table th { color: #333; }

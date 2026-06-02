@@ -14,6 +14,7 @@ import { ShopModule } from './shop/shop.module';
 import { DevlogsModule } from './devlogs/devlogs.module';
 import { FraudReviewModule } from './fraud-review/fraud-review.module';
 import { LapseModule } from './lapse/lapse.module';
+import { HcbModule } from './hcb/hcb.module';
 import { User } from './entities/user.entity';
 import { Session } from './entities/session.entity';
 import { Project } from './entities/project.entity';
@@ -29,6 +30,7 @@ import { ShopSuggestion } from './entities/shop-suggestion.entity';
 import { ShopSuggestionVote } from './entities/shop-suggestion-vote.entity';
 import { Devlog } from './entities/devlog.entity';
 import { FraudReview } from './entities/fraud-review.entity';
+import { HcbCredential } from './entities/hcb-credential.entity';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -42,7 +44,7 @@ import { HealthController } from './health.controller';
       useFactory: (config: ConfigService) => ({
         type: 'postgres',
         url: config.getOrThrow('DATABASE_URL'),
-        entities: [User, Session, Project, AuditLog, NewsItem, ProjectReview, Comment, ShopItem, Order, FulfillmentUpdate, Submission, ShopSuggestion, ShopSuggestionVote, Devlog, FraudReview],
+        entities: [User, Session, Project, AuditLog, NewsItem, ProjectReview, Comment, ShopItem, Order, FulfillmentUpdate, Submission, ShopSuggestion, ShopSuggestionVote, Devlog, FraudReview, HcbCredential],
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         migrationsRun: true,
         synchronize: false,
@@ -60,6 +62,7 @@ import { HealthController } from './health.controller';
     DevlogsModule,
     FraudReviewModule,
     LapseModule,
+    HcbModule,
   ],
 })
 export class AppModule {}

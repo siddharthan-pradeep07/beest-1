@@ -41,6 +41,11 @@ export class Order {
   @Column({ length: 20, default: 'pending' })
   status: string; // 'pending' | 'fulfilled'
 
+  // Public ID (cdg_…) of the HCB card grant issued for this order, if any.
+  // Acts as a per-order idempotency lock: a non-null value blocks re-granting.
+  @Column({ name: 'hcb_card_grant_id', type: 'varchar', length: 64, nullable: true })
+  hcbCardGrantId: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
