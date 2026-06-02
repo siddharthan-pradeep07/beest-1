@@ -2,6 +2,7 @@
 	import DauChart from './DauChart.svelte';
 	import SignupsChart from './SignupsChart.svelte';
 	import UserFunnel from './UserFunnel.svelte';
+	import TimelapsePanel from '$lib/components/admin/TimelapsePanel.svelte';
 	let { data } = $props();
 
 	interface UserSummary {
@@ -1743,6 +1744,8 @@
 										<span class="proj-info-value" style="white-space: pre-wrap">{selectedProject.latestSubmission.reviewerNote}</span>
 									</div>
 								{/if}
+
+								<TimelapsePanel projectId={selectedProject.id} />
 
 								{#if selectedProject.status === 'unreviewed' || selectedProject.status === 'approved'}
 									<hr class="proj-divider" />
