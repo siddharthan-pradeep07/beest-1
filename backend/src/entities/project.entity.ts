@@ -90,7 +90,7 @@ export class Project {
   @Column({ type: 'real', name: 'internal_hours', nullable: true })
   internalHours: number | null;
 
-  @Column({ name: 'is_update', default: false })
+  @Column({ type: 'boolean', name: 'is_update', default: false })
   isUpdate: boolean;
 
   @Column({ type: 'varchar', name: 'other_hc_program', length: 255, nullable: true })
