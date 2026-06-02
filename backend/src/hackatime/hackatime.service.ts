@@ -220,18 +220,16 @@ export class HackatimeService implements OnModuleInit {
   }
 
   /**
-   * Verifies the user's stored `hackatime_user_id` actually belongs to the
-   * Beest account's registered email. Catches the ban-evasion pattern where a
-   * user completes the Hackatime OAuth flow while signed into somebody else's
-   * Hackatime account (shared token, alt account, etc.) so the linked
-   * heartbeats belong to a foreign — and often later-banned — Hackatime user.
+   * Re-checks the stored Hackatime account's current trust/ban state, since the
+   * connect-time check in handleCallback() is only a single snapshot. Catches
+   * the ban-evasion pattern where a user routes a banned Hackatime account's
+   * heartbeats into Beest (shared token, alt account, etc.).
    *
-   * Also re-checks the stored account's current trust/ban state, since the
-   * connect-time check in handleCallback() is only a single snapshot.
-   *
-   * Throws ForbiddenException on any mismatch, and marks the Beest user as
-   * Banned in Airtable + revokes their sessions so the same pattern can't be
-   * retried without reconnecting.
+   * Only bans when the linked Hackatime account is itself banned / red-trust.
+   * Owning a second (non-banned) Hackatime account is allowed: a bare
+   * email/ID mismatch is treated as inconclusive and let through. When a ban
+   * does fire, it marks the Beest user as Banned in Airtable + revokes their
+   * sessions so the same pattern can't be retried without reconnecting.
    *
    * No-ops silently if the admin API key isn't configured (e.g. local dev).
    */
@@ -375,8 +373,16 @@ export class HackatimeService implements OnModuleInit {
   /**
    * Pure decision function. Maps the Hackatime lookups to one of:
    *   - `pass`: positive proof of ownership found
-   *   - `ban`:  a contradiction or active negative (trust/banned, lookup-mismatch, email-not-on-account)
-   *   - `inconclusive`: no positive proof, no contradiction — caller decides what to do
+   *   - `ban`:  the linked Hackatime account is itself banned / red-trust
+   *             (genuine ban-evasion — connecting a banned account's heartbeats)
+   *   - `inconclusive`: no positive proof and no active ban — caller fails open
+   *
+   * Owning a second/alternate Hackatime account is NOT itself bannable. A bare
+   * email/ID mismatch (the connected account isn't the one whose primary email
+   * is the user's, or doesn't list the user's email) is therefore NOT a ban —
+   * it only fails to provide positive proof, so it resolves to `inconclusive`
+   * and the caller lets it through. The ONLY ban trigger is the linked account
+   * actually being banned/red-trust on Hackatime.
    *
    * The two positive-proof paths matter:
    *   1. `get_user_by_email(email)` returns the stored id (direct match)
@@ -393,24 +399,11 @@ export class HackatimeService implements OnModuleInit {
     const ownEmail = email.toLowerCase();
     const { emailOwnerId, linkedEmails, linkedBanned, linkedTrustLevel } = lookups;
 
-    const lookupContradicts =
-      emailOwnerId !== null && emailOwnerId !== storedId;
-    const linkedEmailsContradict =
-      linkedEmails.length > 0 && !linkedEmails.includes(ownEmail);
+    // The only bannable condition: the linked Hackatime account is itself
+    // banned / red-trust. Connecting a banned account's heartbeats is the
+    // ban-evasion pattern we care about. A mere mismatch (alt account that is
+    // not banned) is allowed.
     const trustBad = linkedTrustLevel === 'red' || linkedBanned;
-
-    if (lookupContradicts) {
-      return {
-        kind: 'ban',
-        reason: `Hackatime ID mismatch (stored=${storedId}, expected=${emailOwnerId})`,
-      };
-    }
-    if (linkedEmailsContradict) {
-      return {
-        kind: 'ban',
-        reason: 'Linked Hackatime account does not contain your email',
-      };
-    }
     if (trustBad) {
       return {
         kind: 'ban',
@@ -430,6 +423,8 @@ export class HackatimeService implements OnModuleInit {
       };
     }
 
+    // No positive proof, but no banned linked account either — e.g. the user
+    // connected a different (non-banned) Hackatime account. Not a ban; fail open.
     return { kind: 'inconclusive' };
   }
 
@@ -440,10 +435,9 @@ export class HackatimeService implements OnModuleInit {
    * the ownership check now passes, clear their Airtable `Perms` so they can
    * sign back in.
    *
-   * Scope is deliberately narrow: only the two failure reasons that can
-   * recover on Hackatime's side are polled. Lookup contradictions and
-   * missing-email failures need a human to fix the underlying Hackatime
-   * state, so we don't auto-poll them.
+   * Scope: the only ban reason is a banned / red-trust linked account, which
+   * is exactly what can recover on Hackatime's side, so the poller picks it up
+   * via the `banned=true` / `trust=red` labels.
    *
    * Gated on NODE_ENV === 'production' so it doesn't fire in dev where the
    * .env may point at prod Airtable.
