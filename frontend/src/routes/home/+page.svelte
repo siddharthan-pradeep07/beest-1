@@ -1735,7 +1735,9 @@
                 </div>
                 <h3>{event.title}</h3>
                 {#if event.hostedBy}
-                  <p class="event-hosted-by">Hosted by <a href={slackUserUrl(event.hostedBy)} target="_blank" rel="noopener noreferrer">{event.hostedByName ?? event.hostedBy}</a></p>
+                  <p class="event-hosted-by">
+                    Hosted by <a href={slackUserUrl(event.hostedBy)} target="_blank" rel="noopener noreferrer">{event.hostedByName ?? event.hostedBy}</a>
+                  </p>
                 {/if}
                 {#if event.location}
                   <p class="event-location">{event.location}</p>
@@ -3238,6 +3240,8 @@
 
   .event-hosted-by {
     display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
     gap: 6px;
     width: fit-content;
     padding: 4px 9px;
