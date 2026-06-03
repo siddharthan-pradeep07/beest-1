@@ -29,6 +29,11 @@ export type CardGrantInput = {
   merchantLock?: string | null;
   categoryLock?: string | null;
   keywordLock?: string | null;
+  // Both default ON when omitted. One-time-use locks the grant to a single
+  // transaction; pre-authorization requires the recipient to be approved
+  // before the card activates.
+  oneTimeUse?: boolean;
+  preAuthorizationRequired?: boolean;
 };
 
 export type HcbStatus = {
@@ -313,6 +318,9 @@ export class HcbService {
     const merchantLock = this.cleanLock(input.merchantLock);
     const categoryLock = this.cleanLock(input.categoryLock);
     const keywordLock = this.cleanLock(input.keywordLock);
+    // Default both protections ON; only an explicit `false` disables them.
+    const oneTimeUse = input.oneTimeUse !== false;
+    const preAuthorizationRequired = input.preAuthorizationRequired !== false;
 
     const amountCents = input.amountCents;
     if (!Number.isInteger(amountCents) || amountCents <= 0) {
@@ -345,7 +353,12 @@ export class HcbService {
           throw new ConflictException(`A card grant (${order.hcbCardGrantId}) was already issued for this order`);
         }
 
-        const body: Record<string, unknown> = { amount_cents: amountCents, email };
+        const body: Record<string, unknown> = {
+          amount_cents: amountCents,
+          email,
+          one_time_use: oneTimeUse,
+          pre_authorization_required: preAuthorizationRequired,
+        };
         if (purpose) body.purpose = purpose;
         if (merchantLock) body.merchant_lock = merchantLock;
         if (categoryLock) body.category_lock = categoryLock;

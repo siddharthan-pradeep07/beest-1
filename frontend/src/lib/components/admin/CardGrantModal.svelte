@@ -31,6 +31,9 @@
 	let amountDollars = $state('');
 	let email = $state('');
 	let purpose = $state('');
+	// Both protections default ON; admin can opt out per grant.
+	let oneTimeUse = $state(true);
+	let preAuthorizationRequired = $state(true);
 
 	let submitting = $state(false);
 	let submitError = $state('');
@@ -91,7 +94,9 @@
 					orderId: order.id,
 					amountCents,
 					email: email.trim(),
-					purpose: purpose.trim() || null
+					purpose: purpose.trim() || null,
+					oneTimeUse,
+					preAuthorizationRequired
 				})
 			});
 			const body = await res.json().catch(() => ({}));
@@ -168,6 +173,16 @@
 			<label class="cg-field">
 				<span>Purpose (≤30 chars)</span>
 				<input type="text" bind:value={purpose} maxlength="30" />
+				</label>
+
+				<label class="cg-check">
+					<input type="checkbox" bind:checked={oneTimeUse} />
+					<span>One-time use <span class="cg-hint">— card locks after the first transaction</span></span>
+				</label>
+
+				<label class="cg-check">
+					<input type="checkbox" bind:checked={preAuthorizationRequired} />
+					<span>Require pre-authorization <span class="cg-hint">— recipient must be approved before the card activates</span></span>
 			</label>
 
 			{#if submitError}
@@ -251,6 +266,18 @@
 	.cg-hint {
 		opacity: 0.6;
 		font-weight: 400;
+	}
+	.cg-check {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		margin-bottom: 0.6rem;
+		font-size: 0.85rem;
+		cursor: pointer;
+	}
+	.cg-check input {
+		margin-top: 0.15rem;
+		flex-shrink: 0;
 	}
 	.cg-actions {
 		display: flex;

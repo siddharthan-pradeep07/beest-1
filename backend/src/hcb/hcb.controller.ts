@@ -70,6 +70,8 @@ export class HcbController {
       merchantLock?: string | null;
       categoryLock?: string | null;
       keywordLock?: string | null;
+      oneTimeUse?: boolean;
+      preAuthorizationRequired?: boolean;
     },
   ) {
     if (!body.orderId || typeof body.orderId !== 'string') {
@@ -90,6 +92,8 @@ export class HcbController {
         merchantLock: body.merchantLock ?? null,
         categoryLock: body.categoryLock ?? null,
         keywordLock: body.keywordLock ?? null,
+        oneTimeUse: body.oneTimeUse,
+        preAuthorizationRequired: body.preAuthorizationRequired,
       },
       this.admin(req),
     );
