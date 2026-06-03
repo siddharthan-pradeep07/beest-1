@@ -205,7 +205,9 @@ export class AdminService {
 
     const hostLookup = new Map<string, { name: string; slackId: string | null }>();
     for (const host of hosts) {
-      const displayName = (host.slackId ? slackDisplayNames.get(host.slackId) : null) || host.nickname || host.name || host.email || host.slackId;
+      const displayName = host.slackId
+        ? slackDisplayNames.get(host.slackId) || host.slackId
+        : host.nickname || host.name || host.email;
       for (const key of [host.slackId, host.nickname, host.name]) {
         if (key && !hostLookup.has(key)) {
           hostLookup.set(key, { name: displayName, slackId: host.slackId ?? null });

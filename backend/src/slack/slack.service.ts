@@ -88,9 +88,9 @@ export class SlackService {
     const user = data.user;
     const profile = user?.profile ?? {};
     const displayName =
+      user?.name ||
       profile.display_name_normalized ||
       profile.display_name ||
-      (user?.name ? `@${user.name}` : null) ||
       profile.real_name_normalized ||
       profile.real_name ||
       null;
