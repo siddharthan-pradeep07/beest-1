@@ -1477,21 +1477,21 @@
 		</div>
 	{:else if activeTab === 'events'}
 		<div class="events-admin">
-			<div class="news-form">
+			<div class="news-form event-form">
 				<h3>{editingEvent ? 'Edit Event' : 'Add Event'}</h3>
-				<div class="news-form-fields">
-					<input type="text" placeholder="Title" bind:value={newEventTitle} class="news-input" />
-					<textarea placeholder="Description" bind:value={newEventDescription} class="news-input news-input-text" rows="2"></textarea>
-					<div class="news-date-row">
+				<div class="event-form-fields">
+					<input type="text" placeholder="Title" bind:value={newEventTitle} class="news-input event-title-input" />
+					<input type="url" placeholder="URL (optional)" bind:value={newEventUrl} class="news-input event-url-input" />
+					<textarea placeholder="Description" bind:value={newEventDescription} class="news-input news-input-text event-description-input" rows="3"></textarea>
+					<div class="news-date-row event-date-row">
 						<label for="event-start-at">Start</label>
 						<input id="event-start-at" type="datetime-local" bind:value={newEventStartAt} class="news-input news-input-date" />
 					</div>
-					<div class="news-date-row">
+					<div class="news-date-row event-date-row">
 						<label for="event-end-at">End</label>
 						<input id="event-end-at" type="datetime-local" bind:value={newEventEndAt} class="news-input news-input-date" />
 					</div>
-					<input type="url" placeholder="URL (optional)" bind:value={newEventUrl} class="news-input" />
-					<div class="news-form-actions">
+					<div class="news-form-actions event-form-actions">
 						<button class="btn btn-add-news" onclick={editingEvent ? saveEventEdit : createEvent} disabled={eventSaving || !newEventTitle.trim() || !newEventStartAt.trim()}>
 							{eventSaving ? 'Saving...' : editingEvent ? 'Save Event' : 'Add Event'}
 						</button>
@@ -2691,6 +2691,10 @@
 		max-width: 900px;
 	}
 
+	.events-admin {
+		max-width: 900px;
+	}
+
 	.news-form {
 		background: #222;
 		border: 1px solid #333;
@@ -2712,6 +2716,57 @@
 		grid-template-columns: auto 1fr auto;
 		gap: 0.5rem;
 		align-items: start;
+	}
+
+	.event-form-fields {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.75rem;
+		align-items: start;
+	}
+
+	.event-description-input,
+	.event-form-actions {
+		grid-column: 1 / -1;
+	}
+
+	.event-date-row {
+		background: #1a1a1a;
+		border: 1px solid #444;
+		border-radius: 4px;
+		padding: 0.35rem 0.5rem;
+	}
+
+	.event-date-row label {
+		color: #888;
+		font-size: 0.75rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		white-space: nowrap;
+	}
+
+	.event-date-row .news-input {
+		flex: 1;
+		min-width: 0;
+		border: 0;
+		background: transparent;
+		padding: 0.15rem 0;
+	}
+
+	.event-date-row .news-input:focus {
+		border-color: transparent;
+	}
+
+	.event-form-actions {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	@media (max-width: 760px) {
+		.event-form-fields {
+			grid-template-columns: 1fr;
+		}
 	}
 
 	.news-date-row {
@@ -4184,6 +4239,8 @@
 	.admin-shell.light .news-edit-input { background: #f5f4f1; border-color: #555; color: #1a1a1a; }
 	.admin-shell.light .news-input:focus,
 	.admin-shell.light .news-edit-input:focus { border-color: #3b7bb5; }
+	.admin-shell.light .event-date-row { background: #f5f4f1; border-color: #555; }
+	.admin-shell.light .event-date-row label { color: #555; }
 
 	.admin-shell.light .btn-now { background: #e8e6e1; color: #333; border-color: #555; }
 	.admin-shell.light .btn-now:hover:not(:disabled) { background: #ddd; }
