@@ -3209,7 +3209,18 @@
 
   .event-card h3 {
     margin: 0 0 10px;
+    font-family: "Stone Breaker", "Courier New", monospace;
     font-size: 1.25rem;
+    letter-spacing: 0.04em;
+    color: #e6f4fe;
+  }
+
+  .event-card p {
+    margin: 0 0 12px;
+    font-family: "Courier New", monospace;
+    font-size: 15px;
+    line-height: 1.45;
+    color: #cbc1ae;
   }
 
   .event-card-meta {
@@ -3217,17 +3228,20 @@
     flex-wrap: wrap;
     gap: 10px;
     margin-bottom: 16px;
+    font-family: "Sunny Mood", "Courier New", monospace;
     color: #c8d8ea;
     font-size: 0.95rem;
   }
 
   .event-location {
     margin: 0 0 12px;
+    font-family: "Courier New", monospace;
     color: #e6f4fe;
     font-weight: 600;
   }
 
   .event-card a {
+    font-family: "Courier New", monospace;
     color: #93b4cd;
     text-decoration: underline;
   }
