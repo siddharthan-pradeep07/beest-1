@@ -15,7 +15,7 @@
 
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
+  import { goto, pushState } from '$app/navigation';
   import { page } from '$app/state';
   import confetti from 'canvas-confetti';
   import { formatLocal } from '$lib/utils/formatDate';
@@ -1058,7 +1058,7 @@
     if (creatingProject || editingProject || reviewProject) resetForm();
     activeSection = id;
     loadSectionData(id);
-    goto(sectionRoutes[id] ?? '/projects');
+    pushState(sectionRoutes[id] ?? '/projects', {});
   }
 
   async function fetchPipes() {
