@@ -3248,12 +3248,6 @@
     box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.18);
   }
 
-  .event-card-meta span {
-    color: #cbc1ae;
-    background: rgba(203, 193, 174, 0.12);
-    border-color: rgba(203, 193, 174, 0.18);
-  }
-
   .event-location {
     margin: 0 0 12px;
     font-family: "Courier New", monospace;
