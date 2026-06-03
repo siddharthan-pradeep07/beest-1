@@ -69,6 +69,8 @@
 		url: string | null;
 	}
 	let eventItems: AdminEvent[] = $state([]);
+	let eventHostUsers: UserSummary[] = $state([]);
+	let eventHostsLoading = $state(false);
 	let eventsLoading = $state(false);
 	let editingEvent: AdminEvent | null = $state(null);
 	let newEventTitle = $state('');
@@ -439,6 +441,16 @@
 			if (res.ok) users = await res.json();
 		} finally {
 			loading = false;
+		}
+	}
+
+	async function loadEventHostUsers() {
+		eventHostsLoading = true;
+		try {
+			const res = await fetch('/api/admin/users');
+			if (res.ok) eventHostUsers = await res.json();
+		} finally {
+			eventHostsLoading = false;
 		}
 	}
 
@@ -1115,7 +1127,7 @@
 		if (activeTab === 'users') { loadUsers(); }
 		if (activeTab === 'stats') { loadUsers(); if (isSuperAdmin) loadUnreviewedHours(); }
 		if (activeTab === 'news') loadNews();
-		if (activeTab === 'events') { loadEvents(); if (users.length === 0) loadUsers(); }
+		if (activeTab === 'events') { loadEvents(); if (eventHostUsers.length === 0) loadEventHostUsers(); }
 		if (activeTab === 'projects') loadProjects();
 		if (activeTab === 'shop') loadShop();
 		if (activeTab === 'fulfillment') { loadFulfillment(); loadHcbStatus(); }
@@ -1493,8 +1505,8 @@
 					<input type="text" placeholder="Title" bind:value={newEventTitle} class="news-input event-title-input" />
 					<input type="url" placeholder="URL (optional)" bind:value={newEventUrl} class="news-input event-url-input" />
 					<select bind:value={newEventHostedBy} class="news-input event-hosted-input">
-						<option value="">Hosted by</option>
-						{#each users as user}
+						<option value="">{eventHostsLoading ? 'Loading users...' : 'Hosted by'}</option>
+						{#each eventHostUsers as user}
 							<option value={userDisplayName(user)}>{userDisplayName(user)} — {user.email}</option>
 						{/each}
 					</select>
