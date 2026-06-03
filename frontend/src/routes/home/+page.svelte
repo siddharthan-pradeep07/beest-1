@@ -3226,11 +3226,32 @@
   .event-card-meta {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: 8px;
+    align-items: center;
     margin-bottom: 16px;
     font-family: "Sunny Mood", "Courier New", monospace;
-    color: #c8d8ea;
-    font-size: 0.95rem;
+    color: #e6f4fe;
+    font-size: 20px;
+    line-height: 1.1;
+    text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.3);
+  }
+
+  .event-card-meta time,
+  .event-card-meta span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 4px 10px;
+    border: 1px solid rgba(230, 244, 254, 0.18);
+    border-radius: 4px;
+    background: rgba(147, 180, 205, 0.16);
+    box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.18);
+  }
+
+  .event-card-meta span {
+    color: #cbc1ae;
+    background: rgba(203, 193, 174, 0.12);
+    border-color: rgba(203, 193, 174, 0.18);
   }
 
   .event-location {
