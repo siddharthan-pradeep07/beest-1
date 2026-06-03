@@ -34,6 +34,10 @@
   let { data } = $props();
   const initialEvents = data.events ?? [];
 
+  function slackUserUrl(slackId: string) {
+    return `https://hackclub.enterprise.slack.com/team/${encodeURIComponent(slackId)}`;
+  }
+
   let activeSection = $state('projects');
   let tileLoaded = $state(false);
   let customCursorEnabled = $state(typeof localStorage !== 'undefined' ? localStorage.getItem('customCursor') !== 'off' : true);
@@ -2674,7 +2678,13 @@
                 </div>
                 <div class="account-field">
                   <span class="account-label">Slack ID</span>
-                  <span class="account-value">{data.user.slack_id ?? '—'}</span>
+                  <span class="account-value">
+                    {#if data.user.slack_id}
+                      <a href={slackUserUrl(data.user.slack_id)} target="_blank" rel="noopener noreferrer" class="account-link">{data.user.slack_id}</a>
+                    {:else}
+                      —
+                    {/if}
+                  </span>
                 </div>
                 <div class="account-field">
                   <span class="account-label">Gender</span>
@@ -7212,6 +7222,11 @@
     text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.3);
     text-align: right;
     word-break: break-all;
+  }
+
+  .account-link {
+    color: #93b4cd;
+    text-decoration: underline;
   }
 
   .nickname-form {

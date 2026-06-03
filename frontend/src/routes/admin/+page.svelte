@@ -458,6 +458,10 @@
 		return user.nickname || user.name || user.email || user.hcaSub;
 	}
 
+	function slackUserUrl(slackId: string) {
+		return `https://hackclub.enterprise.slack.com/team/${encodeURIComponent(slackId)}`;
+	}
+
 	async function selectUser(user: UserSummary) {
 		selectedUser = user;
 		userDetail = null;
@@ -1199,7 +1203,13 @@
 										<td>{user.name ?? '—'}</td>
 										<td class="mono">{user.email}</td>
 										<td><span class="badge" class:banned={user.perms === 'Banned'}>{user.perms ?? '—'}</span></td>
-										<td class="mono">{user.slackId ?? '—'}</td>
+										<td class="mono">
+											{#if user.slackId}
+												<a class="slack-link" href={slackUserUrl(user.slackId)} target="_blank" rel="noopener noreferrer" onclick={(e) => e.stopPropagation()}>{user.slackId}</a>
+											{:else}
+												—
+											{/if}
+										</td>
 										<td>{user.hackatimeConnected ? 'Yes' : 'No'}</td>
 										<td>{formatDate(user.createdAt)}</td>
 									</tr>
@@ -1231,7 +1241,13 @@
 										<dt>Name</dt><dd>{userDetail.name ?? '—'}</dd>
 										<dt>Email</dt><dd class="mono">{userDetail.email}</dd>
 										<dt>Nickname</dt><dd>{userDetail.nickname ?? '—'}</dd>
-										<dt>Slack ID</dt><dd class="mono">{userDetail.slackId ?? '—'}</dd>
+										<dt>Slack ID</dt><dd class="mono">
+											{#if userDetail.slackId}
+												<a class="slack-link" href={slackUserUrl(userDetail.slackId)} target="_blank" rel="noopener noreferrer">{userDetail.slackId}</a>
+											{:else}
+												—
+											{/if}
+										</dd>
 										<dt>Hackatime</dt><dd>{userDetail.hackatimeConnected ? 'Connected' : 'Not connected'}</dd>
 										<dt>Perms</dt><dd><span class="badge" class:banned={userDetail.perms === 'Banned'}>{userDetail.perms ?? 'Unknown'}</span></dd>
 										<dt>Active Sessions</dt><dd>{userDetail.activeSessions}</dd>
@@ -1926,7 +1942,19 @@
 
 										<div class="proj-main-meta">
 											<span>Type: <strong>{selectedProject.projectType}</strong></span>
-											<span>User: <strong>{isSuperAdmin ? (selectedProject.user.name ?? '—') : (selectedProject.user.slackId ?? '—')}</strong>{isSuperAdmin && selectedProject.user.slackId ? ` (${selectedProject.user.slackId})` : ''}</span>
+											<span>
+												User:
+												<strong>{isSuperAdmin ? (selectedProject.user.name ?? '—') : ''}</strong>
+												{#if selectedProject.user.slackId}
+													{#if isSuperAdmin}
+														(<a class="slack-link" href={slackUserUrl(selectedProject.user.slackId)} target="_blank" rel="noopener noreferrer">{selectedProject.user.slackId}</a>)
+													{:else}
+														<strong><a class="slack-link" href={slackUserUrl(selectedProject.user.slackId)} target="_blank" rel="noopener noreferrer">{selectedProject.user.slackId}</a></strong>
+													{/if}
+												{:else if !isSuperAdmin}
+													<strong>—</strong>
+												{/if}
+											</span>
 											<span>Update: <strong>{selectedProject.isUpdate ? 'Yes' : 'No'}</strong></span>
 											<span>Created: <strong>{formatDate(selectedProject.createdAt)}</strong></span>
 										</div>
@@ -2500,6 +2528,15 @@
 	.users-table tbody tr.selected { background: #1e2a3a; }
 
 	.mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.8rem; }
+
+	.slack-link {
+		color: #5b9bd5;
+		text-decoration: none;
+	}
+
+	.slack-link:hover {
+		text-decoration: underline;
+	}
 
 	.detail-panel {
 		flex: 0 0 50%;
@@ -4389,6 +4426,7 @@
 	.admin-shell.light .ht-btn-docs { background: #f5f4f1; color: #1a1a1a; border-color: #555; }
 
 	.admin-shell.light .mono { color: #1a1a1a; }
+	.admin-shell.light .slack-link { color: #2a6699; }
 
 	/* ── Fulfillment ─────────────────────────────────── */
 	.fulfillment-admin { padding: 0; }
