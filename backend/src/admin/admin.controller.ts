@@ -151,6 +151,7 @@ export class AdminController {
     body: {
       title?: string;
       description?: string | null;
+      hostedBy?: string | null;
       startAt?: string;
       endAt?: string | null;
       url?: string | null;
@@ -167,6 +168,7 @@ export class AdminController {
     body: {
       title?: string;
       description?: string | null;
+      hostedBy?: string | null;
       startAt?: string;
       endAt?: string | null;
       url?: string | null;

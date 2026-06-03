@@ -17,6 +17,9 @@ export class Event {
   @Column({ type: 'text', nullable: true })
   description: string | null;
 
+  @Column({ name: 'hosted_by', type: 'varchar', length: 200, nullable: true })
+  hostedBy: string | null;
+
   @Column({ name: 'start_at', type: 'timestamptz' })
   startAt: Date;
 

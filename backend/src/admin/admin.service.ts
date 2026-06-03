@@ -192,6 +192,7 @@ export class AdminService {
   async createEvent(body: {
     title?: string;
     description?: string | null;
+    hostedBy?: string | null;
     startAt?: string;
     endAt?: string | null;
     url?: string | null;
@@ -216,6 +217,7 @@ export class AdminService {
     const event = this.eventRepo.create({
       title,
       description: body.description?.trim() || null,
+      hostedBy: body.hostedBy?.trim() || null,
       startAt,
       endAt: endAt || null,
       url: body.url?.trim() || null,
@@ -226,6 +228,7 @@ export class AdminService {
   async updateEvent(id: string, body: {
     title?: string;
     description?: string | null;
+    hostedBy?: string | null;
     startAt?: string;
     endAt?: string | null;
     url?: string | null;
@@ -240,6 +243,9 @@ export class AdminService {
     }
     if (body.description !== undefined) {
       event.description = body.description?.trim() || null;
+    }
+    if (body.hostedBy !== undefined) {
+      event.hostedBy = body.hostedBy?.trim() || null;
     }
     if (body.url !== undefined) {
       event.url = body.url?.trim() || null;

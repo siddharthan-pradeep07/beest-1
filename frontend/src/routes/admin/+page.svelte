@@ -63,6 +63,7 @@
 		id: string;
 		title: string;
 		description: string | null;
+		hostedBy: string | null;
 		startAt: string;
 		endAt: string | null;
 		url: string | null;
@@ -72,6 +73,7 @@
 	let editingEvent: AdminEvent | null = $state(null);
 	let newEventTitle = $state('');
 	let newEventDescription = $state('');
+	let newEventHostedBy = $state('');
 	let newEventStartAt = $state('');
 	let newEventEndAt = $state('');
 	let newEventUrl = $state('');
@@ -619,6 +621,7 @@
 		editingEvent = null;
 		newEventTitle = '';
 		newEventDescription = '';
+		newEventHostedBy = '';
 		newEventStartAt = '';
 		newEventEndAt = '';
 		newEventUrl = '';
@@ -636,6 +639,7 @@
 				body: JSON.stringify({
 					title: newEventTitle,
 					description: newEventDescription,
+					hostedBy: newEventHostedBy,
 					startAt,
 					endAt,
 					url: newEventUrl,
@@ -663,6 +667,7 @@
 				body: JSON.stringify({
 					title: newEventTitle,
 					description: newEventDescription,
+					hostedBy: newEventHostedBy,
 					startAt,
 					endAt,
 					url: newEventUrl,
@@ -692,6 +697,7 @@
 		editingEvent = { ...eventItem };
 		newEventTitle = eventItem.title;
 		newEventDescription = eventItem.description ?? '';
+		newEventHostedBy = eventItem.hostedBy ?? '';
 		newEventStartAt = toDateTimeLocalValue(eventItem.startAt);
 		newEventEndAt = toDateTimeLocalValue(eventItem.endAt);
 		newEventUrl = eventItem.url ?? '';
@@ -1482,6 +1488,7 @@
 				<div class="event-form-fields">
 					<input type="text" placeholder="Title" bind:value={newEventTitle} class="news-input event-title-input" />
 					<input type="url" placeholder="URL (optional)" bind:value={newEventUrl} class="news-input event-url-input" />
+					<input type="text" placeholder="Hosted by (optional)" bind:value={newEventHostedBy} class="news-input event-hosted-input" />
 					<textarea placeholder="Description" bind:value={newEventDescription} class="news-input news-input-text event-description-input" rows="3"></textarea>
 					<div class="news-date-row event-date-row">
 						<label for="event-start-at">Start</label>
@@ -1512,6 +1519,7 @@
 						<tr>
 							<th>Start</th>
 							<th>Title</th>
+							<th>Hosted By</th>
 							<th>Actions</th>
 						</tr>
 					</thead>
@@ -1520,6 +1528,7 @@
 							<tr>
 								<td>{new Date(evt.startAt).toLocaleString()}</td>
 								<td>{evt.title}</td>
+								<td>{evt.hostedBy ?? '—'}</td>
 									<td class="news-actions">
 									<button class="btn btn-edit" onclick={() => editEvent(evt)}>Edit</button>
 									<button class="btn btn-delete" onclick={() => deleteEvent(evt.id)} disabled={eventSaving}>Delete</button>
