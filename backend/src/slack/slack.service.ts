@@ -60,10 +60,17 @@ export class SlackService {
       return this.displayNameCache.get(slackId) ?? null;
     }
 
-    const res = await fetchWithTimeout(
-      `https://slack.com/api/users.info?user=${encodeURIComponent(slackId)}`,
-      { headers: { Authorization: `Bearer ${this.botToken}` } },
-    );
+    let res: Response;
+    try {
+      res = await fetchWithTimeout(
+        `https://slack.com/api/users.info?user=${encodeURIComponent(slackId)}`,
+        { headers: { Authorization: `Bearer ${this.botToken}` } },
+      );
+    } catch (error) {
+      this.logger.error(`Slack users.info request failed for ${slackId}: ${error instanceof Error ? error.message : String(error)}`);
+      this.displayNameCache.set(slackId, null);
+      return null;
+    }
 
     if (!res.ok) {
       this.logger.error(`Slack users.info HTTP error for ${slackId}: ${res.status}`);
@@ -81,9 +88,9 @@ export class SlackService {
     const user = data.user;
     const profile = user?.profile ?? {};
     const displayName =
-      (user?.name ? `@${user.name}` : null) ||
       profile.display_name_normalized ||
       profile.display_name ||
+      (user?.name ? `@${user.name}` : null) ||
       profile.real_name_normalized ||
       profile.real_name ||
       null;
