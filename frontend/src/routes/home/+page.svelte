@@ -1960,55 +1960,52 @@
     {#if !creatingProject && !editingProject && !reviewProject && activeSection === 'projects'}
     <section class="section section-projects">
       <div class="section-inner">
-        <div class="event-countdown" aria-label="Countdown to Beest">
-          <div>
-            <p class="event-countdown-kicker"><span class="event-countdown-logo">BEEST</span> starts</p>
-            <h2 class="event-countdown-title">July 10, Scheveningen</h2>
-          </div>
-          {#if eventCountdown.live}
-            <p class="event-countdown-live">Beest is live</p>
-          {:else}
-            <div class="event-countdown-grid">
-              <div class="event-countdown-unit"><strong>{eventCountdown.days}</strong><span>Days</span></div>
-              <div class="event-countdown-unit"><strong>{eventCountdown.hours}</strong><span>Hours</span></div>
-              <div class="event-countdown-unit"><strong>{eventCountdown.minutes}</strong><span>Minutes</span></div>
-              <div class="event-countdown-unit"><strong>{eventCountdown.seconds}</strong><span>Seconds</span></div>
-            </div>
-          {/if}
-        </div>
-
         <div class="section-header">
           <div>
             <h2 class="section-title">My Projects</h2>
             <p class="section-subtitle">Track your progress and hours.</p>
           </div>
-          <div class="progress-bar-wrap">
-            <div class="progress-labels">
-              <span class="progress-hours">{displayHours}h</span>
-              <span class="progress-goal">{(hoursByStatus['approved'] ?? 0) >= GOAL_HOURS ? `${GOAL_HOURS}h approved` : `${GOAL_HOURS}h to qualify`}</span>
-            </div>
-            <div class="progress-track">
-              {#each ['approved', 'unreviewed', 'changes_needed', 'unshipped'] as status}
-                {@const pct = Math.min(((displayByStatus[status] ?? 0) / GOAL_HOURS) * 100, 100)}
-                {@const label = status === 'changes_needed' ? 'Changes Needed' : status.charAt(0).toUpperCase() + status.slice(1)}
-                {#if pct > 0}
-                  <div class="progress-fill {status}" style="width: {pct}%" title="{Math.round((hoursByStatus[status] ?? 0) * 10) / 10}h {label}"></div>
-                {/if}
-              {/each}
-            </div>
-            <div class="progress-ticks">
-              <span>0</span>
-              <span>10</span>
-              <span>20</span>
-              <span>30</span>
-              <span>40</span>
-            </div>
+          <div class="event-countdown" aria-label="Countdown to Beest">
+            <p class="event-countdown-kicker"><span class="event-countdown-logo">BEEST</span> starts</p>
+            {#if eventCountdown.live}
+              <p class="event-countdown-live">Live</p>
+            {:else}
+              <div class="event-countdown-grid">
+                <div class="event-countdown-unit"><strong>{eventCountdown.days}</strong><span>D</span></div>
+                <div class="event-countdown-unit"><strong>{eventCountdown.hours}</strong><span>H</span></div>
+                <div class="event-countdown-unit"><strong>{eventCountdown.minutes}</strong><span>M</span></div>
+                <div class="event-countdown-unit"><strong>{eventCountdown.seconds}</strong><span>S</span></div>
+              </div>
+            {/if}
           </div>
           <div class="progress-key">
             <span class="key-item"><span class="key-swatch approved"></span>Approved</span>
             <span class="key-item"><span class="key-swatch unreviewed"></span>Unreviewed</span>
             <span class="key-item"><span class="key-swatch changes-needed"></span>Changes Needed</span>
             <span class="key-item"><span class="key-swatch unshipped"></span>Unshipped</span>
+          </div>
+        </div>
+
+        <div class="progress-bar-wrap">
+          <div class="progress-labels">
+            <span class="progress-hours">{displayHours}h</span>
+            <span class="progress-goal">{(hoursByStatus['approved'] ?? 0) >= GOAL_HOURS ? `${GOAL_HOURS}h approved` : `${GOAL_HOURS}h to qualify`}</span>
+          </div>
+          <div class="progress-track">
+            {#each ['approved', 'unreviewed', 'changes_needed', 'unshipped'] as status}
+              {@const pct = Math.min(((displayByStatus[status] ?? 0) / GOAL_HOURS) * 100, 100)}
+              {@const label = status === 'changes_needed' ? 'Changes Needed' : status.charAt(0).toUpperCase() + status.slice(1)}
+              {#if pct > 0}
+                <div class="progress-fill {status}" style="width: {pct}%" title="{Math.round((hoursByStatus[status] ?? 0) * 10) / 10}h {label}"></div>
+              {/if}
+            {/each}
+          </div>
+          <div class="progress-ticks">
+            <span>0</span>
+            <span>10</span>
+            <span>20</span>
+            <span>30</span>
+            <span>40</span>
           </div>
         </div>
 
@@ -5758,24 +5755,28 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 24px;
-    margin-bottom: 28px;
-    padding: 18px 20px;
+    gap: 12px;
+    flex: 1 1 420px;
+    max-width: 760px;
+    min-width: 260px;
+    margin: 0;
+    padding: 10px 12px;
     background: rgba(75, 72, 64, 0.58);
     border: 2px solid rgba(230, 244, 254, 0.16);
-    box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.16);
+    box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.14);
   }
 
   .event-countdown-kicker {
-    margin: 0 0 6px;
+    margin: 0;
     font-family: "Sunny Mood", "Courier New", monospace;
-    font-size: 18px;
+    font-size: 16px;
     color: #cbc1ae;
+    white-space: nowrap;
   }
 
   .event-countdown-logo {
     font-family: "Stone Breaker", "Courier New", monospace;
-    font-size: 28px;
+    font-size: 24px;
     font-weight: 700;
     letter-spacing: 0.06em;
     line-height: 1;
@@ -5793,38 +5794,38 @@
 
   .event-countdown-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(78px, 1fr));
-    gap: 8px;
-    min-width: min(100%, 420px);
+    grid-template-columns: repeat(4, minmax(48px, 1fr));
+    gap: 6px;
+    min-width: min(100%, 250px);
   }
 
   .event-countdown-unit {
     display: grid;
     place-items: center;
-    min-height: 82px;
-    padding: 10px 8px;
+    min-height: 54px;
+    padding: 6px;
     background: #586063;
     border: 1px solid rgba(230, 244, 254, 0.22);
-    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.16);
+    box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.16);
   }
 
   .event-countdown-unit strong {
     font-family: "Stone Breaker", "Courier New", monospace;
-    font-size: clamp(30px, 3vw, 42px);
+    font-size: clamp(20px, 2vw, 30px);
     line-height: 1;
     color: #93b4cd;
   }
 
   .event-countdown-unit span {
     font-family: "Sunny Mood", "Courier New", monospace;
-    font-size: 14px;
+    font-size: 12px;
     color: #e6f4fe;
   }
 
   .event-countdown-live {
     margin: 0;
     font-family: "Stone Breaker", "Courier New", monospace;
-    font-size: clamp(32px, 4vw, 54px);
+    font-size: clamp(24px, 3vw, 38px);
     color: #93b4cd;
   }
 
@@ -5847,10 +5848,8 @@
   }
 
   .progress-bar-wrap {
-    flex: 1 1 420px;
-    max-width: 760px;
-    min-width: 260px;
-    margin: 2px 0 0;
+    margin-top: 16px;
+    margin-bottom: 32px;
   }
 
   .progress-labels {
@@ -5862,14 +5861,14 @@
 
   .progress-hours {
     font-family: "Stone Breaker", "Courier New", monospace;
-    font-size: clamp(22px, 2vw, 30px);
+    font-size: clamp(28px, 3vw, 40px);
     color: #cbc1ae;
     letter-spacing: 0.04em;
   }
 
   .progress-goal {
     font-family: "Stone Breaker", "Courier New", monospace;
-    font-size: clamp(22px, 2vw, 30px);
+    font-size: clamp(28px, 3vw, 40px);
     color: #cbc1ae;
     letter-spacing: 0.04em;
   }
@@ -5877,7 +5876,7 @@
   .progress-track {
     display: flex;
     width: 100%;
-    height: 20px;
+    height: 28px;
     background: rgba(0, 0, 0, 0.3);
     border: 1px solid rgba(230, 244, 254, 0.1);
     overflow: hidden;
@@ -5913,8 +5912,8 @@
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    gap: 28px;
-    margin-bottom: 28px;
+    gap: 24px;
+    margin-bottom: 8px;
   }
 
   .section-header .section-title {
