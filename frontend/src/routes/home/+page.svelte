@@ -5778,6 +5778,7 @@
     font-family: "Stone Breaker", "Courier New", monospace;
     font-size: 28px;
     font-weight: 700;
+    letter-spacing: 0.06em;
     line-height: 1;
     color: #e6f4fe;
   }
