@@ -67,7 +67,7 @@
   let activeSection = $state(sectionFromPath(page.url.pathname));
   let tileLoaded = $state(false);
   let customCursorEnabled = $state(typeof localStorage !== 'undefined' ? localStorage.getItem('customCursor') !== 'off' : true);
-  const EVENT_START = new Date('2026-07-10T00:00:00+02:00').getTime();
+  const EVENT_START = new Date('2026-08-16T00:00:00+02:00').getTime();
   let eventCountdown = $state({ days: 0, hours: 0, minutes: 0, seconds: 0, live: false });
   let creatingProject = $state(false);
   let editingProject = $state<any>(null);
@@ -1028,8 +1028,8 @@
     { q: 'What is Beest?', a: 'Beest is a Hack Club hackathon/event in the Netherlands! Participants qualify by building any project and documenting the process, and those who qualify fly to the Netherlands to build their own beests (mechanical animals!). The event is themed around Strandbeests, a kinetic sculpture developed in the netherlands by Theo Jansen. Participants will have the opportunity to go to a strandbeest exhibit!' },
     { q: 'Who can participate?', a: 'Any teens 13-19 or in high school can participate. We can also provide flight stipends for international students to get to the event.' },
     { q: 'How much does it cost?', a: 'Beest is completely free to participate in! All costs for the event are covered, including food, accommodation, day-off travel and merchandise. Additionally participants can earn stipends for visa application fees and flight costs.' },
-    { q: 'Where and when does Beest take place?', a: 'Beest runs July 10–15 at Scheveningen Beach in the Netherlands. The Strandbeest exhibition happens during that same window, so participants get to see it as part of the event.' },
-    { q: 'How will the event run?', a: 'Beest runs July 10–15. Participants will watch the Strandbeest exhibition during the event and, in teams of three, make their own walking mechanisms, before exhibiting them on Scheveningen beach on the final day.' },
+    { q: 'Where and when does Beest take place?', a: 'Beest runs August 16-21 at Scheveningen Beach in the Netherlands. The Strandbeest exhibition happens during that same window, so participants get to see it as part of the event.' },
+    { q: 'How will the event run?', a: 'Beest runs August 16-21. Participants will watch the Strandbeest exhibition during the event and, in teams of three, make their own walking mechanisms, before exhibiting them on Scheveningen beach on the final day.' },
     { q: 'How do I qualify?', a: "Build an open source coding or hardware project! Anything you can dream up is possible, just make the project you want to exist. Please don't AI generate the project, instead focus on making something fun, silly, useful to you or a project that forces you to learn something new. 40 hours of tracked work will automatically qualify you, and working for additional hours will contribute $8/hr toward your flight cost or visa application fees." },
     { q: 'What should I bring?', a: 'A laptop, a sleeping bag, clothes, a charger, a mobile phone... A more conclusive list will be sent out closer to the event.' },
     { q: 'Do I need prior engineering or building experience?', a: 'No! Hack Club is all about learning by doing, so we welcome builders of all experience levels. We will provide resources and support to help you build your mechanical animal, and we can help you in the #beest channel on Slack!' },
@@ -1966,7 +1966,7 @@
             <p class="section-subtitle">Track your progress and hours.</p>
           </div>
           <div class="event-countdown" aria-label="Countdown to Beest">
-            <p class="event-countdown-kicker"><span class="event-countdown-logo">BEEST</span> starts</p>
+            <p class="event-countdown-kicker"><span class="event-countdown-logo">BEESTing</span> starts on</p>
             {#if eventCountdown.live}
               <p class="event-countdown-live">Live</p>
             {:else}
