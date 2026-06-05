@@ -1982,34 +1982,33 @@
             <h2 class="section-title">My Projects</h2>
             <p class="section-subtitle">Track your progress and hours.</p>
           </div>
+          <div class="progress-bar-wrap">
+            <div class="progress-labels">
+              <span class="progress-hours">{displayHours}h</span>
+              <span class="progress-goal">{(hoursByStatus['approved'] ?? 0) >= GOAL_HOURS ? `${GOAL_HOURS}h approved` : `${GOAL_HOURS}h to qualify`}</span>
+            </div>
+            <div class="progress-track">
+              {#each ['approved', 'unreviewed', 'changes_needed', 'unshipped'] as status}
+                {@const pct = Math.min(((displayByStatus[status] ?? 0) / GOAL_HOURS) * 100, 100)}
+                {@const label = status === 'changes_needed' ? 'Changes Needed' : status.charAt(0).toUpperCase() + status.slice(1)}
+                {#if pct > 0}
+                  <div class="progress-fill {status}" style="width: {pct}%" title="{Math.round((hoursByStatus[status] ?? 0) * 10) / 10}h {label}"></div>
+                {/if}
+              {/each}
+            </div>
+            <div class="progress-ticks">
+              <span>0</span>
+              <span>10</span>
+              <span>20</span>
+              <span>30</span>
+              <span>40</span>
+            </div>
+          </div>
           <div class="progress-key">
             <span class="key-item"><span class="key-swatch approved"></span>Approved</span>
             <span class="key-item"><span class="key-swatch unreviewed"></span>Unreviewed</span>
             <span class="key-item"><span class="key-swatch changes-needed"></span>Changes Needed</span>
             <span class="key-item"><span class="key-swatch unshipped"></span>Unshipped</span>
-          </div>
-        </div>
-
-        <div class="progress-bar-wrap">
-          <div class="progress-labels">
-            <span class="progress-hours">{displayHours}h</span>
-            <span class="progress-goal">{(hoursByStatus['approved'] ?? 0) >= GOAL_HOURS ? `${GOAL_HOURS}h approved` : `${GOAL_HOURS}h to qualify`}</span>
-          </div>
-          <div class="progress-track">
-            {#each ['approved', 'unreviewed', 'changes_needed', 'unshipped'] as status}
-              {@const pct = Math.min(((displayByStatus[status] ?? 0) / GOAL_HOURS) * 100, 100)}
-              {@const label = status === 'changes_needed' ? 'Changes Needed' : status.charAt(0).toUpperCase() + status.slice(1)}
-              {#if pct > 0}
-                <div class="progress-fill {status}" style="width: {pct}%" title="{Math.round((hoursByStatus[status] ?? 0) * 10) / 10}h {label}"></div>
-              {/if}
-            {/each}
-          </div>
-          <div class="progress-ticks">
-            <span>0</span>
-            <span>10</span>
-            <span>20</span>
-            <span>30</span>
-            <span>40</span>
           </div>
         </div>
 
@@ -5848,8 +5847,10 @@
   }
 
   .progress-bar-wrap {
-    margin-top: 16px;
-    margin-bottom: 32px;
+    flex: 1 1 420px;
+    max-width: 760px;
+    min-width: 260px;
+    margin: 2px 0 0;
   }
 
   .progress-labels {
@@ -5861,14 +5862,14 @@
 
   .progress-hours {
     font-family: "Stone Breaker", "Courier New", monospace;
-    font-size: clamp(28px, 3vw, 40px);
+    font-size: clamp(22px, 2vw, 30px);
     color: #cbc1ae;
     letter-spacing: 0.04em;
   }
 
   .progress-goal {
     font-family: "Stone Breaker", "Courier New", monospace;
-    font-size: clamp(28px, 3vw, 40px);
+    font-size: clamp(22px, 2vw, 30px);
     color: #cbc1ae;
     letter-spacing: 0.04em;
   }
@@ -5876,7 +5877,7 @@
   .progress-track {
     display: flex;
     width: 100%;
-    height: 28px;
+    height: 20px;
     background: rgba(0, 0, 0, 0.3);
     border: 1px solid rgba(230, 244, 254, 0.1);
     overflow: hidden;
@@ -5912,8 +5913,8 @@
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    gap: 24px;
-    margin-bottom: 8px;
+    gap: 28px;
+    margin-bottom: 28px;
   }
 
   .section-header .section-title {
@@ -7874,6 +7875,13 @@
     .section-header {
       flex-direction: column;
       gap: 8px;
+    }
+
+    .progress-bar-wrap {
+      width: 100%;
+      max-width: none;
+      min-width: 0;
+      margin-top: 4px;
     }
 
     /* Single-column project list on mobile */
