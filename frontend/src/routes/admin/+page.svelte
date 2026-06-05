@@ -116,7 +116,7 @@
 		aiUse: string | null;
 		createdAt: string;
 		updatedAt: string;
-		user: { id: string; name: string | null; slackId: string | null };
+		user: { id: string; name: string | null; slackId: string | null; reviewerUserNote: string | null };
 		latestSubmission: { id: string; changeDescription: string | null; minHoursConfirmed: boolean; reviewerNote: string | null; status: string; createdAt: string } | null;
 	}
 
@@ -161,6 +161,7 @@
 	let lastAutoJustification = $state('');
 	let userFeedback = $state('');
 	let internalNote = $state('');
+	let persistentUserNote = $state('');
 	let reviewSubmitting = $state(false);
 	let customHours = $state(0);
 	let userFacingHours = $state(0);
@@ -224,6 +225,7 @@
 					status,
 					feedback: userFeedback.trim() || null,
 					internalNote: internalNote.trim() || null,
+					userNote: persistentUserNote.trim() || null,
 					overrideJustification: overrideJustification.trim() || null,
 					overrideHours: userFacingHours,
 					internalHours: customHours,
@@ -231,7 +233,10 @@
 			});
 			if (res.ok) {
 				const proj = allProjects.find(p => p.id === expandedProjectId);
-				if (proj) proj.status = status;
+				if (proj) {
+					proj.status = status;
+					proj.user.reviewerUserNote = persistentUserNote.trim() || null;
+				}
 				// Reload reviews
 				await loadReviews(expandedProjectId);
 			}
@@ -330,7 +335,8 @@
 			expandedProjectId = null;
 			hackatimeData = null;
 			userFeedback = '';
-		internalNote = '';
+			internalNote = '';
+			persistentUserNote = '';
 			projectDevlogs = [];
 			return;
 		}
@@ -345,6 +351,7 @@
 		projectDevlogs = [];
 
 		const proj = allProjects.find(p => p.id === projectId);
+		persistentUserNote = proj?.user?.reviewerUserNote ?? '';
 		loadReviews(projectId);
 		loadProjectDevlogs(projectId);
 		if (proj?.status === 'unreviewed' || proj?.status === 'approved') {
@@ -2185,6 +2192,13 @@
 										<label class="user-feedback-label">
 											User Feedback:
 											<textarea class="user-feedback" bind:value={userFeedback} rows="4" placeholder="Feedback to send to the user about their project..."></textarea>
+										</label>
+									</div>
+
+									<div class="user-feedback-box">
+										<label class="user-feedback-label">
+											User-Wide Reviewer Note:
+											<textarea class="user-feedback" bind:value={persistentUserNote} rows="4" placeholder="Persistent note shown to this builder across all of their projects..."></textarea>
 										</label>
 									</div>
 

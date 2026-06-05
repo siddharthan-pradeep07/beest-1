@@ -1471,6 +1471,13 @@
           </div>
         {/if}
 
+        {#if editingProject?.reviewerUserNote}
+          <div class="persistent-reviewer-note">
+            <h3 class="persistent-reviewer-note-heading">Note from Reviewers</h3>
+            <p class="persistent-reviewer-note-text">{editingProject.reviewerUserNote}</p>
+          </div>
+        {/if}
+
         <div class="resubmit-section">
           <h2 class="section-title">Resubmit for Review</h2>
           <p class="section-subtitle">Ship an update to this approved project to earn more Pipes.</p>
@@ -1551,6 +1558,13 @@
               {/if}
             </div>
           {/each}
+        </div>
+      {/if}
+
+      {#if editingProject?.reviewerUserNote}
+        <div class="persistent-reviewer-note">
+          <h3 class="persistent-reviewer-note-heading">Note from Reviewers</h3>
+          <p class="persistent-reviewer-note-text">{editingProject.reviewerUserNote}</p>
         </div>
       {/if}
 
@@ -4226,6 +4240,31 @@
   .review-feedback-empty {
     color: #7f796d;
     font-style: italic;
+  }
+
+  .persistent-reviewer-note {
+    margin: 0 0 28px;
+    max-width: 720px;
+    padding: 18px 20px;
+    background: rgba(147, 180, 205, 0.12);
+    border: 1px solid rgba(147, 180, 205, 0.35);
+    box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.18);
+  }
+
+  .persistent-reviewer-note-heading {
+    margin: 0 0 8px;
+    font-family: "Stone Breaker", "Courier New", monospace;
+    font-size: 20px;
+    color: #e6f4fe;
+  }
+
+  .persistent-reviewer-note-text {
+    margin: 0;
+    font-family: "Courier New", monospace;
+    font-size: 15px;
+    line-height: 1.55;
+    color: #e6f4fe;
+    white-space: pre-wrap;
   }
 
   .resubmit-section {

@@ -222,6 +222,7 @@ export class AdminController {
       status?: string;
       feedback?: string;
       internalNote?: string;
+      userNote?: string | null;
       overrideJustification?: string;
       overrideHours?: number;
       internalHours?: number;
@@ -273,6 +274,7 @@ export class AdminController {
         reviewerId,
         body.feedback ?? null,
         body.internalNote ?? null,
+        body.userNote,
         body.overrideJustification ?? null,
       );
     }
@@ -283,6 +285,7 @@ export class AdminController {
       body.status,
       body.feedback ?? null,
       body.internalNote ?? null,
+      body.userNote,
       body.overrideJustification ?? null,
       body.overrideHours ?? null,
       body.internalHours ?? null,

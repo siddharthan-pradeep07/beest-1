@@ -184,31 +184,40 @@ export class ProjectsService {
   }
 
   async findByUser(userId: string) {
-    const projects = await this.projectRepo.find({
-      where: { userId },
-      order: { createdAt: 'DESC' },
-      select: [
-        'id',
-        'name',
-        'description',
-        'projectType',
-        'codeUrl',
-        'readmeUrl',
-        'demoUrl',
-        'screenshot1Url',
-        'screenshot2Url',
-        'hackatimeProjectName',
-        'status',
-        'isUpdate',
-        'otherHcProgram',
-        'aiUse',
-        'overrideHours',
-        'pipesGranted',
-        'createdAt',
-        'updatedAt',
-      ],
-    });
-    return projects;
+    const [projects, user] = await Promise.all([
+      this.projectRepo.find({
+        where: { userId },
+        order: { createdAt: 'DESC' },
+        select: [
+          'id',
+          'name',
+          'description',
+          'projectType',
+          'codeUrl',
+          'readmeUrl',
+          'demoUrl',
+          'screenshot1Url',
+          'screenshot2Url',
+          'hackatimeProjectName',
+          'status',
+          'isUpdate',
+          'otherHcProgram',
+          'aiUse',
+          'overrideHours',
+          'pipesGranted',
+          'createdAt',
+          'updatedAt',
+        ],
+      }),
+      this.userRepo.findOne({
+        where: { id: userId },
+        select: ['reviewerUserNote'],
+      }),
+    ]);
+    return projects.map((project) => ({
+      ...project,
+      reviewerUserNote: user?.reviewerUserNote ?? null,
+    }));
   }
 
   /**

@@ -27,6 +27,9 @@ export class User {
   @Column({ nullable: true, name: 'slack_id' })
   slackId: string;
 
+  @Column({ nullable: true, name: 'reviewer_user_note', type: 'text' })
+  reviewerUserNote: string | null;
+
   @Column({ name: 'two_emails', default: false })
   twoEmails: boolean;
 

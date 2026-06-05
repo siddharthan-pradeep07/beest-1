@@ -45,6 +45,14 @@ export class AdminService {
   private readonly hackatimeBaseUrl: string;
   private readonly hackatimeAdminKey: string | undefined;
 
+  private cleanReviewerUserNote(note: string | null | undefined): string | null {
+    if (note === undefined) return null;
+    if (note === null) return null;
+    const trimmed = note.trim();
+    if (!trimmed) return null;
+    return trimmed.slice(0, 2000);
+  }
+
   // DAU cache (5-minute TTL)
   private dauCache: { count: number; timestamp: number } | null = null;
   private readonly DAU_CACHE_TTL = 5 * 60 * 1000;
@@ -380,6 +388,7 @@ export class AdminService {
     reviewerId: string,
     feedback: string | null,
     internalNote: string | null,
+    userNote: string | null | undefined,
     overrideJustification: string | null,
   ) {
     const project = await this.projectRepo.findOne({
@@ -389,6 +398,11 @@ export class AdminService {
     if (!project) throw new NotFoundException('Project not found');
     if (project.userId === reviewerId) {
       throw new BadRequestException('You cannot review your own project');
+    }
+
+    if (userNote !== undefined) {
+      project.user.reviewerUserNote = this.cleanReviewerUserNote(userNote);
+      await this.userRepo.save(project.user);
     }
 
     // 1. Reject the project
@@ -528,6 +542,7 @@ export class AdminService {
             id: p.user?.id,
             name: isSuperAdmin ? p.user?.name : null,
             slackId: p.user?.slackId,
+            reviewerUserNote: p.user?.reviewerUserNote ?? null,
           },
           latestSubmission: latestSub ? {
             id: latestSub.id,
@@ -549,6 +564,7 @@ export class AdminService {
     status: string,
     feedback: string | null,
     internalNote: string | null,
+    userNote: string | null | undefined,
     overrideJustification: string | null,
     overrideHours: number | null,
     internalHours: number | null,
@@ -560,6 +576,11 @@ export class AdminService {
     if (!project) throw new NotFoundException('Project not found');
     if (project.userId === reviewerId) {
       throw new BadRequestException('You cannot review your own project');
+    }
+
+    if (userNote !== undefined) {
+      project.user.reviewerUserNote = this.cleanReviewerUserNote(userNote);
+      await this.userRepo.save(project.user);
     }
 
     const previousStatus = project.status;
