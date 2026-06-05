@@ -47,8 +47,8 @@ export type HcbStatus = {
 
 export type CardGrantPrefill = {
   recipientEmail: string;
-  // Suggested amount (pipes × rate). Purely a default — the admin may override
-  // to any amount; there is no server-side cap.
+  // Suggested amount (pipes × rate). A default — the admin may override, but the
+  // server caps the grant at twice this value.
   suggestedAmountCents: number | null;
   purpose: string;
   orgId: string;
@@ -66,8 +66,8 @@ export class HcbService {
   private readonly redirectUri: string;
   private readonly orgId: string | undefined;
   private readonly jwtSecret: string;
-  // Used only to compute the SUGGESTED grant amount (pipes × rate) for the
-  // prefill. It is not a cap — admins may override the amount freely.
+  // Drives the suggested grant amount (pipes × rate) for the prefill, and caps
+  // the grant at twice that value when configured.
   private readonly centsPerPipe: number | undefined;
 
   private readonly scope = 'read write';
@@ -86,7 +86,8 @@ export class HcbService {
     this.redirectUri = this.config.get<string>('HCB_REDIRECT_URI', 'http://localhost:5173/oauth/hcb/callback');
     this.orgId = this.config.get<string>('HCB_ORG_ID')?.trim() || undefined;
     this.jwtSecret = this.config.getOrThrow<string>('JWT_SECRET');
-    // Cents per pipe, e.g. 500 = $5 per pipe. Drives the suggested amount only.
+    // Cents per pipe, e.g. 500 = $5 per pipe. Drives the suggested amount and
+    // the cap (twice the pipe value).
     this.centsPerPipe = this.parsePositiveInt(
       this.config.get<string>('HCB_CENTS_PER_PIPE') ?? this.config.get<string>('HCB_PIPES_TO_CENTS'),
     );
@@ -325,6 +326,34 @@ export class HcbService {
     const amountCents = input.amountCents;
     if (!Number.isInteger(amountCents) || amountCents <= 0) {
       throw new BadRequestException('Amount must be a positive whole number of cents');
+    }
+
+    // Policy checks. These read the order (and its owner) outside the money-
+    // safety lock below — they only decide whether the grant is allowed at all,
+    // so a slightly stale read is fine; the locked re-read still guards money.
+    const orderForChecks = await this.orderRepo.findOne({
+      where: { id: orderId },
+      relations: ['user'],
+    });
+    if (!orderForChecks) throw new NotFoundException('Order not found');
+    const ownerEmail = (orderForChecks.user?.email ?? '').trim().toLowerCase();
+
+    // 1) An admin may not issue a grant to their own email.
+    if (email === admin.email.trim().toLowerCase()) {
+      throw new BadRequestException('You cannot issue a card grant to your own email');
+    }
+    // 2) The recipient must be the order's owner — the fulfilment email is fixed.
+    if (!ownerEmail || email !== ownerEmail) {
+      throw new BadRequestException("The recipient email must match the order owner's email");
+    }
+    // 3) The amount may not exceed twice the pipe-rate value of the order.
+    if (this.centsPerPipe !== undefined) {
+      const maxCents = 2 * orderForChecks.pipesSpent * this.centsPerPipe;
+      if (amountCents > maxCents) {
+        throw new BadRequestException(
+          `Amount may not exceed twice the pipe value of the order (${maxCents} cents)`,
+        );
+      }
     }
 
     const accessToken = await this.getValidAccessToken();

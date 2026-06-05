@@ -48,12 +48,21 @@
 		return Math.round(v * 100);
 	});
 
+	// The backend caps the grant at twice the suggested (pipe-rate) value. Mirror
+	// that here so the admin sees the limit instead of a rejection.
+	let maxCents = $derived(
+		prefill?.suggestedAmountCents != null ? prefill.suggestedAmountCents * 2 : null
+	);
+
+	let overMax = $derived(maxCents != null && amountCents != null && amountCents > maxCents);
+
 	let canSubmit = $derived(
 		!submitting &&
 			!loading &&
 			!!prefill &&
 			!prefill.alreadyGranted &&
 			amountCents != null &&
+			!overMax &&
 			/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
 	);
 
@@ -155,19 +164,32 @@
 			<div class="cg-org">Issuing org: <code>{prefill.orgId}</code></div>
 
 			<label class="cg-field">
-				<span>Amount (USD) <span class="cg-hint">— suggested from pipes, editable</span></span>
+				<span>
+					Amount (USD)
+					<span class="cg-hint">
+						— suggested from pipes{maxCents != null
+							? `, max $${(maxCents / 100).toFixed(2)}`
+							: ''}</span
+					>
+				</span>
 				<input
 					type="number"
 					min="0"
+					max={maxCents != null ? maxCents / 100 : undefined}
 					step="0.01"
 					bind:value={amountDollars}
 					inputmode="decimal"
 				/>
+				{#if overMax && maxCents != null}
+					<span class="cg-error"
+						>Amount may not exceed twice the pipe value (${(maxCents / 100).toFixed(2)}).</span
+					>
+				{/if}
 			</label>
 
 			<label class="cg-field">
-				<span>Recipient email</span>
-				<input type="email" bind:value={email} autocomplete="off" />
+				<span>Recipient email <span class="cg-hint">— fixed to the order owner</span></span>
+				<input type="email" value={email} readonly autocomplete="off" />
 			</label>
 
 			<label class="cg-field">
