@@ -115,7 +115,7 @@
         { reason: 'Project relies on AI beyond the 30% limit', count: 8 },
         { reason: 'All code committed in one go: reviewers cannot see incremental progress', count: 7 },
         { reason: 'A visible feature is broken in the deployed demo (dead button, 404 asset, navbar, etc.)', count: 7 },
-        { reason: 'Project pre-dates the Beest start window (April 2 2026) and was not updated meaningfully', count: 6 },
+        { reason: 'Project pre-dates the Beest start window (August 2 2026) and was not updated meaningfully', count: 6 },
         { reason: 'Wrong or unrelated Hackatime project linked, or the same Hackatime project re-used across submissions', count: 5 },
         { reason: 'Under the 3-hour minimum', count: 5 }
       ]
