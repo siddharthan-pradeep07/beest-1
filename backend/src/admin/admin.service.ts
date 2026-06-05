@@ -36,6 +36,12 @@ const VALID_PERMS = [
 @Injectable()
 export class AdminService {
   private readonly logger = new Logger(AdminService.name);
+  private static readonly AI_BREAKDOWN_CATEGORIES = new Set([
+    'ai coding',
+    'browsing',
+    'meeting',
+    'communicating',
+  ]);
   private readonly hackatimeBaseUrl: string;
   private readonly hackatimeAdminKey: string | undefined;
 
@@ -915,6 +921,8 @@ export class AdminService {
       hackatimeProjects: [],
       categories: [],
       totalHours: 0,
+      aiHours: 0,
+      nonAiHours: 0,
       earliestHeartbeat: null,
       previousApprovedHours: project?.overrideHours ?? 0,
       previousInternalHours: project?.internalHours ?? 0,
@@ -1173,6 +1181,16 @@ export class AdminService {
       const totalHours = Math.round(
         matched.reduce((sum, p) => sum + p.hours, 0) * 10,
       ) / 10;
+      const aiHours = Math.round(
+        (categories
+          .filter((cat) =>
+            AdminService.AI_BREAKDOWN_CATEGORIES.has(cat.name.toLowerCase()),
+          )
+          .reduce((sum, cat) => sum + cat.totalSeconds, 0) /
+          3600) *
+          10,
+      ) / 10;
+      const nonAiHours = Math.max(0, Math.round((totalHours - aiHours) * 10) / 10);
 
       const heartbeatTimes = matched
         .map((p) => p.firstHeartbeat)
@@ -1191,6 +1209,8 @@ export class AdminService {
         hackatimeProjects: matched,
         categories,
         totalHours,
+        aiHours,
+        nonAiHours,
         earliestHeartbeat,
         previousApprovedHours,
         previousInternalHours,
@@ -1212,6 +1232,8 @@ export class AdminService {
         hackatimeProjects: [],
         categories: [],
         totalHours: 0,
+        aiHours: 0,
+        nonAiHours: 0,
         earliestHeartbeat: null,
         previousApprovedHours: project.overrideHours ?? 0,
         previousInternalHours: project.internalHours ?? 0,

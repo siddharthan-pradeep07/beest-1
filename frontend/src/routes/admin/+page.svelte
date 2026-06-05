@@ -2,6 +2,7 @@
 	import DauChart from './DauChart.svelte';
 	import SignupsChart from './SignupsChart.svelte';
 	import UserFunnel from './UserFunnel.svelte';
+	import ProjectHourBreakdown from '$lib/components/ProjectHourBreakdown.svelte';
 	import TimelapsePanel from '$lib/components/admin/TimelapsePanel.svelte';
 	import CardGrantModal from '$lib/components/admin/CardGrantModal.svelte';
 	let { data } = $props();
@@ -136,6 +137,8 @@
 	// Hackatime detail expansion
 	interface HackatimeDetail {
 		totalHours: number;
+		aiHours: number;
+		nonAiHours: number;
 		earliestHeartbeat: number | null;
 		previousApprovedHours: number;
 		previousInternalHours: number;
@@ -351,10 +354,10 @@
 				if (res.ok) {
 					hackatimeData = await res.json();
 				} else {
-					hackatimeData = { totalHours: 0, earliestHeartbeat: null, previousApprovedHours: 0, previousInternalHours: 0, hackatimeProjects: [], trustLevel: null, linkedBanned: false, linkedEmail: null, linkedSlackUid: null, beestEmail: null, beestSlackId: null, emailMismatch: false, unifiedDuplicate: false, unifiedError: true };
+					hackatimeData = { totalHours: 0, aiHours: 0, nonAiHours: 0, earliestHeartbeat: null, previousApprovedHours: 0, previousInternalHours: 0, hackatimeProjects: [], trustLevel: null, linkedBanned: false, linkedEmail: null, linkedSlackUid: null, beestEmail: null, beestSlackId: null, emailMismatch: false, unifiedDuplicate: false, unifiedError: true };
 				}
 			} catch {
-				hackatimeData = { totalHours: 0, earliestHeartbeat: null, previousApprovedHours: 0, previousInternalHours: 0, hackatimeProjects: [], trustLevel: null, linkedBanned: false, linkedEmail: null, linkedSlackUid: null, beestEmail: null, beestSlackId: null, emailMismatch: false, unifiedDuplicate: false, unifiedError: true };
+				hackatimeData = { totalHours: 0, aiHours: 0, nonAiHours: 0, earliestHeartbeat: null, previousApprovedHours: 0, previousInternalHours: 0, hackatimeProjects: [], trustLevel: null, linkedBanned: false, linkedEmail: null, linkedSlackUid: null, beestEmail: null, beestSlackId: null, emailMismatch: false, unifiedDuplicate: false, unifiedError: true };
 			} finally {
 				hackatimeLoading = false;
 				// Default the reviewer's inputs to the DELTA of new Hackatime work
@@ -2071,6 +2074,14 @@
 													<span class="ht-delta">prev approved: {hackatimeData.previousApprovedHours}h — new Hackatime since: {Math.round((hackatimeData.totalHours - hackatimeData.previousApprovedHours) * 10) / 10}h</span>
 												{/if}
 											</div>
+											<div class="ht-breakdown-panel">
+												<ProjectHourBreakdown
+													totalHours={hackatimeData.totalHours}
+													aiHours={hackatimeData.aiHours}
+													nonAiHours={hackatimeData.nonAiHours}
+													perProject={hackatimeData.hackatimeProjects.map((hp) => ({ name: hp.name, hours: hp.hours }))}
+												/>
+											</div>
 											{#if hackatimeData.linkedBanned || hackatimeData.emailMismatch || hackatimeData.trustLevel === 'red'}
 												<div class="ht-ownership-alert">
 													{#if hackatimeData.emailMismatch}
@@ -3763,6 +3774,15 @@
 		color: #ddd;
 	}
 
+	.ht-breakdown-panel {
+		margin: 1rem 0;
+		--surface: #181818;
+		--border: #3f3f3f;
+		--shadow-soft: none;
+		--muted: #aaa;
+		--surface-border: #2a2a2a;
+	}
+
 	.ht-project-name {
 		font-weight: 600;
 		color: #e0e0e0;
@@ -4371,6 +4391,13 @@
 
 	/* Hackatime detail */
 	.admin-shell.light .ht-header { color: #333; }
+	.admin-shell.light .ht-breakdown-panel {
+		--surface: #f5f4f1;
+		--border: #d9d3c8;
+		--shadow-soft: none;
+		--muted: #666;
+		--surface-border: #eae4da;
+	}
 	.admin-shell.light .ht-total { color: #2a6699; }
 	.admin-shell.light .ht-project { background: #f5f4f1; border-color: #555; color: #333; }
 	.admin-shell.light .ht-project-name { color: #1a1a1a; }
