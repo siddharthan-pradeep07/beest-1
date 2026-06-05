@@ -58,6 +58,45 @@
 	let newNewsDate = $state('');
 	let newsSaving = $state(false);
 
+	// Events state
+	interface AdminEvent {
+		id: string;
+		title: string;
+		description: string | null;
+		hostedBy: string | null;
+		hostedByName: string | null;
+		hostedBySlackId: string | null;
+		startAt: string;
+		endAt: string | null;
+		url: string | null;
+	}
+	let eventItems: AdminEvent[] = $state([]);
+	let eventHostUsers: UserSummary[] = $state([]);
+	let eventHostsLoading = $state(false);
+	let eventsLoading = $state(false);
+	let editingEvent: AdminEvent | null = $state(null);
+	let newEventTitle = $state('');
+	let newEventDescription = $state('');
+	let newEventHostedBy = $state('');
+	let newEventStartAt = $state('');
+	let newEventEndAt = $state('');
+	let newEventUrl = $state('');
+	let eventSaving = $state(false);
+
+	function toEventApiDate(value: string) {
+		if (!value) return null;
+		const date = new Date(value);
+		return Number.isNaN(date.getTime()) ? null : date.toISOString();
+	}
+
+	function toDateTimeLocalValue(value: string | null) {
+		if (!value) return '';
+		const date = new Date(value);
+		if (Number.isNaN(date.getTime())) return '';
+		const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+		return offsetDate.toISOString().slice(0, 16);
+	}
+
 	// Projects state
 	interface ProjectSummary {
 		id: string;
@@ -407,6 +446,24 @@
 		}
 	}
 
+	async function loadEventHostUsers() {
+		eventHostsLoading = true;
+		try {
+			const res = await fetch('/api/admin/users');
+			if (res.ok) eventHostUsers = await res.json();
+		} finally {
+			eventHostsLoading = false;
+		}
+	}
+
+	function userDisplayName(user: UserSummary) {
+		return user.nickname || user.name || user.email || user.hcaSub;
+	}
+
+	function slackUserUrl(slackId: string) {
+		return `https://hackclub.enterprise.slack.com/team/${encodeURIComponent(slackId)}`;
+	}
+
 	async function selectUser(user: UserSummary) {
 		selectedUser = user;
 		userDetail = null;
@@ -570,6 +627,102 @@
 		} finally {
 			newsSaving = false;
 		}
+	}
+
+	async function loadEvents() {
+		eventsLoading = true;
+		try {
+			const res = await fetch('/api/admin/events');
+			if (res.ok) eventItems = await res.json();
+		} finally {
+			eventsLoading = false;
+		}
+	}
+
+	function resetEventForm() {
+		editingEvent = null;
+		newEventTitle = '';
+		newEventDescription = '';
+		newEventHostedBy = '';
+		newEventStartAt = '';
+		newEventEndAt = '';
+		newEventUrl = '';
+	}
+
+	async function createEvent() {
+		const startAt = toEventApiDate(newEventStartAt);
+		const endAt = toEventApiDate(newEventEndAt);
+		if (!newEventTitle.trim() || !newEventHostedBy.trim() || !startAt) return;
+		eventSaving = true;
+		try {
+			const res = await fetch('/api/admin/events', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					title: newEventTitle,
+					description: newEventDescription,
+					hostedBy: newEventHostedBy,
+					startAt,
+					endAt,
+					url: newEventUrl,
+				}),
+			});
+			if (res.ok) {
+				resetEventForm();
+				await loadEvents();
+			}
+		} finally {
+			eventSaving = false;
+		}
+	}
+
+	async function saveEventEdit() {
+		if (!editingEvent) return;
+		const startAt = toEventApiDate(newEventStartAt);
+		const endAt = toEventApiDate(newEventEndAt);
+		if (!newEventTitle.trim() || !newEventHostedBy.trim() || !startAt) return;
+		eventSaving = true;
+		try {
+			const res = await fetch(`/api/admin/events/${editingEvent.id}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					title: newEventTitle,
+					description: newEventDescription,
+					hostedBy: newEventHostedBy,
+					startAt,
+					endAt,
+					url: newEventUrl,
+				}),
+			});
+			if (res.ok) {
+				editingEvent = null;
+				await loadEvents();
+			}
+		} finally {
+			eventSaving = false;
+		}
+	}
+
+	async function deleteEvent(id: string) {
+		if (!confirm('Delete this event?')) return;
+		eventSaving = true;
+		try {
+			const res = await fetch(`/api/admin/events/${id}`, { method: 'DELETE' });
+			if (res.ok) await loadEvents();
+		} finally {
+			eventSaving = false;
+		}
+	}
+
+	function editEvent(eventItem: AdminEvent) {
+		editingEvent = { ...eventItem };
+		newEventTitle = eventItem.title;
+		newEventDescription = eventItem.description ?? '';
+		newEventHostedBy = eventItem.hostedBySlackId ?? eventItem.hostedBy ?? '';
+		newEventStartAt = toDateTimeLocalValue(eventItem.startAt);
+		newEventEndAt = toDateTimeLocalValue(eventItem.endAt);
+		newEventUrl = eventItem.url ?? '';
 	}
 
 	async function loadProjects() {
@@ -980,6 +1133,7 @@
 		if (activeTab === 'users') { loadUsers(); }
 		if (activeTab === 'stats') { loadUsers(); if (isSuperAdmin) loadUnreviewedHours(); }
 		if (activeTab === 'news') loadNews();
+		if (activeTab === 'events') { loadEvents(); if (eventHostUsers.length === 0) loadEventHostUsers(); }
 		if (activeTab === 'projects') loadProjects();
 		if (activeTab === 'shop') loadShop();
 		if (activeTab === 'fulfillment') { loadFulfillment(); loadHcbStatus(); }
@@ -1001,6 +1155,9 @@
 			<button class="tab" class:active={activeTab === 'users'} onclick={() => { activeTab = 'users'; closeDetail(); }}>Users</button>
 			<button class="tab" class:active={activeTab === 'stats'} onclick={() => activeTab = 'stats'}>Stats</button>
 			<button class="tab" class:active={activeTab === 'news'} onclick={() => activeTab = 'news'}>News</button>
+			{#if isSuperAdmin}
+				<button class="tab" class:active={activeTab === 'events'} onclick={() => activeTab = 'events'}>Events</button>
+			{/if}
 			<button class="tab" class:active={activeTab === 'shop'} onclick={() => activeTab = 'shop'}>Shop</button>
 			<button class="tab" class:active={activeTab === 'fulfillment'} onclick={() => activeTab = 'fulfillment'}>Fulfillment</button>
 		{/if}
@@ -1048,7 +1205,13 @@
 										<td>{user.name ?? '—'}</td>
 										<td class="mono">{user.email}</td>
 										<td><span class="badge" class:banned={user.perms === 'Banned'}>{user.perms ?? '—'}</span></td>
-										<td class="mono">{user.slackId ?? '—'}</td>
+										<td class="mono">
+											{#if user.slackId}
+												<a class="slack-link" href={slackUserUrl(user.slackId)} target="_blank" rel="noopener noreferrer" onclick={(e) => e.stopPropagation()}>{user.slackId}</a>
+											{:else}
+												—
+											{/if}
+										</td>
 										<td>{user.hackatimeConnected ? 'Yes' : 'No'}</td>
 										<td>{formatDate(user.createdAt)}</td>
 									</tr>
@@ -1080,7 +1243,13 @@
 										<dt>Name</dt><dd>{userDetail.name ?? '—'}</dd>
 										<dt>Email</dt><dd class="mono">{userDetail.email}</dd>
 										<dt>Nickname</dt><dd>{userDetail.nickname ?? '—'}</dd>
-										<dt>Slack ID</dt><dd class="mono">{userDetail.slackId ?? '—'}</dd>
+										<dt>Slack ID</dt><dd class="mono">
+											{#if userDetail.slackId}
+												<a class="slack-link" href={slackUserUrl(userDetail.slackId)} target="_blank" rel="noopener noreferrer">{userDetail.slackId}</a>
+											{:else}
+												—
+											{/if}
+										</dd>
 										<dt>Hackatime</dt><dd>{userDetail.hackatimeConnected ? 'Connected' : 'Not connected'}</dd>
 										<dt>Perms</dt><dd><span class="badge" class:banned={userDetail.perms === 'Banned'}>{userDetail.perms ?? 'Unknown'}</span></dd>
 										<dt>Active Sessions</dt><dd>{userDetail.activeSessions}</dd>
@@ -1340,13 +1509,86 @@
 											<button class="btn btn-delete" onclick={() => deleteNews(item.id)} disabled={newsSaving}>Delete</button>
 										</td>
 									{/if}
-								</tr>
-							{/each}
-						</tbody>
-					</table>
-				{/if}
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			{/if}
+		</div>
+	{:else if activeTab === 'events'}
+		<div class="events-admin">
+			<div class="news-form event-form">
+				<h3>{editingEvent ? 'Edit Event' : 'Add Event'}</h3>
+				<div class="event-form-fields">
+					<input type="text" placeholder="Title" bind:value={newEventTitle} class="news-input event-title-input" />
+					<input type="url" placeholder="URL (optional)" bind:value={newEventUrl} class="news-input event-url-input" />
+					<select bind:value={newEventHostedBy} class="news-input event-hosted-input">
+						<option value="">{eventHostsLoading ? 'Loading users...' : 'Hosted by'}</option>
+						{#each eventHostUsers as user}
+							{#if user.slackId}
+								<option value={user.slackId}>{userDisplayName(user)} — {user.slackId}</option>
+							{/if}
+						{/each}
+					</select>
+					<textarea placeholder="Description" bind:value={newEventDescription} class="news-input news-input-text event-description-input" rows="3"></textarea>
+					<div class="news-date-row event-date-row">
+						<label for="event-start-at">Start</label>
+						<input id="event-start-at" type="datetime-local" bind:value={newEventStartAt} class="news-input news-input-date" />
+					</div>
+					<div class="news-date-row event-date-row">
+						<label for="event-end-at">End</label>
+						<input id="event-end-at" type="datetime-local" bind:value={newEventEndAt} class="news-input news-input-date" />
+					</div>
+					<div class="news-form-actions event-form-actions">
+						<button class="btn btn-add-news" onclick={editingEvent ? saveEventEdit : createEvent} disabled={eventSaving || !newEventTitle.trim() || !newEventHostedBy.trim() || !newEventStartAt.trim()}>
+							{eventSaving ? 'Saving...' : editingEvent ? 'Save Event' : 'Add Event'}
+						</button>
+						{#if editingEvent}
+							<button class="btn btn-cancel" onclick={resetEventForm} disabled={eventSaving}>Cancel</button>
+						{/if}
+					</div>
+				</div>
 			</div>
-		{:else if activeTab === 'fulfillment'}
+
+			{#if eventsLoading}
+				<p class="loading">Loading events...</p>
+			{:else if eventItems.length === 0}
+				<p class="empty">No events yet.</p>
+			{:else}
+				<table class="users-table">
+					<thead>
+						<tr>
+							<th>Start</th>
+							<th>Title</th>
+							<th>Hosted By</th>
+							<th>Actions</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each eventItems as evt}
+							<tr>
+								<td>{new Date(evt.startAt).toLocaleString()}</td>
+								<td>{evt.title}</td>
+								<td>
+									{#if evt.hostedBySlackId}
+										<a class="slack-link" href={slackUserUrl(evt.hostedBySlackId)} target="_blank" rel="noopener noreferrer">{evt.hostedByName ?? evt.hostedBySlackId}</a>
+									{:else if evt.hostedBy}
+										{evt.hostedByName ?? evt.hostedBy}
+									{:else}
+										—
+									{/if}
+								</td>
+									<td class="news-actions">
+									<button class="btn btn-edit" onclick={() => editEvent(evt)}>Edit</button>
+									<button class="btn btn-delete" onclick={() => deleteEvent(evt.id)} disabled={eventSaving}>Delete</button>
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			{/if}
+		</div>
+	{:else if activeTab === 'fulfillment'}
 			<div class="fulfillment-admin">
 				{#if hcbStatus}
 					<div class="hcb-banner" class:hcb-ok={hcbStatus.connected} class:hcb-warn={!hcbStatus.connected}>
@@ -1712,7 +1954,19 @@
 
 										<div class="proj-main-meta">
 											<span>Type: <strong>{selectedProject.projectType}</strong></span>
-											<span>User: <strong>{isSuperAdmin ? (selectedProject.user.name ?? '—') : (selectedProject.user.slackId ?? '—')}</strong>{isSuperAdmin && selectedProject.user.slackId ? ` (${selectedProject.user.slackId})` : ''}</span>
+											<span>
+												User:
+												<strong>{isSuperAdmin ? (selectedProject.user.name ?? '—') : ''}</strong>
+												{#if selectedProject.user.slackId}
+													{#if isSuperAdmin}
+														(<a class="slack-link" href={slackUserUrl(selectedProject.user.slackId)} target="_blank" rel="noopener noreferrer">{selectedProject.user.slackId}</a>)
+													{:else}
+														<strong><a class="slack-link" href={slackUserUrl(selectedProject.user.slackId)} target="_blank" rel="noopener noreferrer">{selectedProject.user.slackId}</a></strong>
+													{/if}
+												{:else if !isSuperAdmin}
+													<strong>—</strong>
+												{/if}
+											</span>
 											<span>Update: <strong>{selectedProject.isUpdate ? 'Yes' : 'No'}</strong></span>
 											<span>Created: <strong>{formatDate(selectedProject.createdAt)}</strong></span>
 										</div>
@@ -2287,6 +2541,15 @@
 
 	.mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.8rem; }
 
+	.slack-link {
+		color: #5b9bd5;
+		text-decoration: none;
+	}
+
+	.slack-link:hover {
+		text-decoration: underline;
+	}
+
 	.detail-panel {
 		flex: 0 0 50%;
 		background: #222;
@@ -2507,6 +2770,10 @@
 		max-width: 900px;
 	}
 
+	.events-admin {
+		max-width: 900px;
+	}
+
 	.news-form {
 		background: #222;
 		border: 1px solid #333;
@@ -2528,6 +2795,57 @@
 		grid-template-columns: auto 1fr auto;
 		gap: 0.5rem;
 		align-items: start;
+	}
+
+	.event-form-fields {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.75rem;
+		align-items: start;
+	}
+
+	.event-description-input,
+	.event-form-actions {
+		grid-column: 1 / -1;
+	}
+
+	.event-date-row {
+		background: #1a1a1a;
+		border: 1px solid #444;
+		border-radius: 4px;
+		padding: 0.35rem 0.5rem;
+	}
+
+	.event-date-row label {
+		color: #888;
+		font-size: 0.75rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		white-space: nowrap;
+	}
+
+	.event-date-row .news-input {
+		flex: 1;
+		min-width: 0;
+		border: 0;
+		background: transparent;
+		padding: 0.15rem 0;
+	}
+
+	.event-date-row .news-input:focus {
+		border-color: transparent;
+	}
+
+	.event-form-actions {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	@media (max-width: 760px) {
+		.event-form-fields {
+			grid-template-columns: 1fr;
+		}
 	}
 
 	.news-date-row {
@@ -4000,6 +4318,8 @@
 	.admin-shell.light .news-edit-input { background: #f5f4f1; border-color: #555; color: #1a1a1a; }
 	.admin-shell.light .news-input:focus,
 	.admin-shell.light .news-edit-input:focus { border-color: #3b7bb5; }
+	.admin-shell.light .event-date-row { background: #f5f4f1; border-color: #555; }
+	.admin-shell.light .event-date-row label { color: #555; }
 
 	.admin-shell.light .btn-now { background: #e8e6e1; color: #333; border-color: #555; }
 	.admin-shell.light .btn-now:hover:not(:disabled) { background: #ddd; }
@@ -4118,6 +4438,7 @@
 	.admin-shell.light .ht-btn-docs { background: #f5f4f1; color: #1a1a1a; border-color: #555; }
 
 	.admin-shell.light .mono { color: #1a1a1a; }
+	.admin-shell.light .slack-link { color: #2a6699; }
 
 	/* ── Fulfillment ─────────────────────────────────── */
 	.fulfillment-admin { padding: 0; }

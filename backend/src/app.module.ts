@@ -29,6 +29,7 @@ import { Submission } from './entities/submission.entity';
 import { ShopSuggestion } from './entities/shop-suggestion.entity';
 import { ShopSuggestionVote } from './entities/shop-suggestion-vote.entity';
 import { Devlog } from './entities/devlog.entity';
+import { Event } from './entities/event.entity';
 import { FraudReview } from './entities/fraud-review.entity';
 import { HcbCredential } from './entities/hcb-credential.entity';
 import { HealthController } from './health.controller';
@@ -44,7 +45,7 @@ import { HealthController } from './health.controller';
       useFactory: (config: ConfigService) => ({
         type: 'postgres',
         url: config.getOrThrow('DATABASE_URL'),
-        entities: [User, Session, Project, AuditLog, NewsItem, ProjectReview, Comment, ShopItem, Order, FulfillmentUpdate, Submission, ShopSuggestion, ShopSuggestionVote, Devlog, FraudReview, HcbCredential],
+        entities: [User, Session, Project, AuditLog, NewsItem, ProjectReview, Comment, ShopItem, Order, FulfillmentUpdate, Submission, ShopSuggestion, ShopSuggestionVote, Devlog, Event, FraudReview, HcbCredential],
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         migrationsRun: true,
         synchronize: false,

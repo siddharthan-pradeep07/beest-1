@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { User } from '../entities/user.entity';
 import { Session } from '../entities/session.entity';
 import { Project } from '../entities/project.entity';
@@ -16,11 +16,13 @@ import { ProjectReview } from '../entities/project-review.entity';
 import { ShopItem } from '../entities/shop-item.entity';
 import { Order } from '../entities/order.entity';
 import { Submission } from '../entities/submission.entity';
+import { Event } from '../entities/event.entity';
 import { RsvpService } from '../rsvp/rsvp.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { HcaService } from '../hca/hca.service';
 import { fetchWithTimeout } from '../fetch.util';
 import { ProjectAirtableSyncService } from '../projects/project-airtable-sync.service';
+import { SlackService } from '../slack/slack.service';
 
 const VALID_PERMS = [
   'User',
@@ -85,10 +87,12 @@ export class AdminService {
     @InjectRepository(ShopItem) private readonly shopRepo: Repository<ShopItem>,
     @InjectRepository(Order) private readonly orderRepo: Repository<Order>,
     @InjectRepository(Submission) private readonly submissionRepo: Repository<Submission>,
+    @InjectRepository(Event) private readonly eventRepo: Repository<Event>,
     private readonly rsvpService: RsvpService,
     private readonly auditLogService: AuditLogService,
     private readonly hcaService: HcaService,
     private readonly airtableSync: ProjectAirtableSyncService,
+    private readonly slackService: SlackService,
   ) {
     this.hackatimeBaseUrl = this.configService.get(
       'HACKATIME_BASE_URL',
@@ -172,6 +176,177 @@ export class AdminService {
       activeSessions: sessions,
       auditLogs,
     };
+  }
+
+  private async withEventHosts(events: Event[]): Promise<Array<Event & { hostedByName: string | null; hostedBySlackId: string | null }>> {
+    const hostValues = Array.from(
+      new Set(events.map((event) => event.hostedBy?.trim()).filter((hostedBy): hostedBy is string => !!hostedBy)),
+    );
+    if (hostValues.length === 0) {
+      return events.map((event) => ({ ...event, hostedByName: null, hostedBySlackId: null }));
+    }
+
+    const hosts = await this.userRepo.find({
+      where: [
+        { slackId: In(hostValues) },
+        { nickname: In(hostValues) },
+        { name: In(hostValues) },
+      ],
+      select: ['hcaSub', 'slackId', 'name', 'nickname', 'email'],
+    });
+    const slackDisplayNames = new Map<string, string | null>();
+    await Promise.all(
+      hosts
+        .filter((host) => !!host.slackId)
+        .map(async (host) => {
+          slackDisplayNames.set(host.slackId, await this.slackService.getUserDisplayName(host.slackId));
+        }),
+    );
+    const hcaNicknames = new Map<string, string | null>();
+    await Promise.all(
+      hosts
+        .filter((host) => !!host.slackId && !slackDisplayNames.get(host.slackId) && !host.nickname)
+        .map(async (host) => {
+          const identity = await this.hcaService.getIdentity(host.hcaSub);
+          const nickname = typeof identity?.nickname === 'string' && identity.nickname.trim() ? identity.nickname.trim() : null;
+          hcaNicknames.set(host.slackId, nickname);
+        }),
+    );
+
+    const hostLookup = new Map<string, { name: string; slackId: string | null }>();
+    for (const host of hosts) {
+      const displayName = host.slackId
+        ? slackDisplayNames.get(host.slackId) || host.nickname || hcaNicknames.get(host.slackId) || host.slackId
+        : host.nickname || host.name || host.email;
+      for (const key of [host.slackId, host.nickname, host.name]) {
+        if (key && !hostLookup.has(key)) {
+          hostLookup.set(key, { name: displayName, slackId: host.slackId ?? null });
+        }
+      }
+    }
+
+    return events.map((event) => ({
+      ...event,
+      hostedByName: event.hostedBy ? (hostLookup.get(event.hostedBy)?.name ?? event.hostedBy) : null,
+      hostedBySlackId: event.hostedBy ? (hostLookup.get(event.hostedBy)?.slackId ?? null) : null,
+    }));
+  }
+
+  async listEvents() {
+    const events = await this.eventRepo.find({ order: { startAt: 'ASC', title: 'ASC' } });
+    return this.withEventHosts(events);
+  }
+
+  async listUpcomingEvents() {
+    const now = new Date();
+    const events = await this.eventRepo
+      .createQueryBuilder('event')
+      .where('event.end_at IS NULL OR event.end_at >= :now', { now: now.toISOString() })
+      .orderBy('event.start_at', 'ASC')
+      .getMany();
+    return this.withEventHosts(events);
+  }
+
+  async createEvent(body: {
+    title?: string;
+    description?: string | null;
+    hostedBy?: string | null;
+    startAt?: string;
+    endAt?: string | null;
+    url?: string | null;
+  }) {
+    const title = (body.title ?? '').trim();
+    const hostedBy = (body.hostedBy ?? '').trim();
+    const startAt = body.startAt ? new Date(body.startAt) : null;
+    const endAt = body.endAt ? new Date(body.endAt) : null;
+
+    if (!title) {
+      throw new BadRequestException('title is required');
+    }
+    if (!hostedBy) {
+      throw new BadRequestException('hostedBy is required');
+    }
+    if (!startAt || Number.isNaN(startAt.getTime())) {
+      throw new BadRequestException('startAt is required and must be a valid datetime');
+    }
+    if (endAt && Number.isNaN(endAt.getTime())) {
+      throw new BadRequestException('endAt must be a valid datetime');
+    }
+    if (endAt && endAt < startAt) {
+      throw new BadRequestException('endAt must be the same or after startAt');
+    }
+
+    const event = this.eventRepo.create({
+      title,
+      description: body.description?.trim() || null,
+      hostedBy,
+      startAt,
+      endAt: endAt || null,
+      url: body.url?.trim() || null,
+    });
+    const saved = await this.eventRepo.save(event);
+    const [eventWithHost] = await this.withEventHosts([saved]);
+    return eventWithHost;
+  }
+
+  async updateEvent(id: string, body: {
+    title?: string;
+    description?: string | null;
+    hostedBy?: string | null;
+    startAt?: string;
+    endAt?: string | null;
+    url?: string | null;
+  }) {
+    const event = await this.eventRepo.findOne({ where: { id } });
+    if (!event) {
+      throw new NotFoundException('Event not found');
+    }
+
+    if (body.title !== undefined) {
+      event.title = body.title.trim() || event.title;
+    }
+    if (body.description !== undefined) {
+      event.description = body.description?.trim() || null;
+    }
+    if (body.hostedBy !== undefined) {
+      const hostedBy = body.hostedBy?.trim() || '';
+      if (!hostedBy) {
+        throw new BadRequestException('hostedBy is required');
+      }
+      event.hostedBy = hostedBy;
+    }
+    if (body.url !== undefined) {
+      event.url = body.url?.trim() || null;
+    }
+    if (body.startAt !== undefined) {
+      const startAt = new Date(body.startAt);
+      if (Number.isNaN(startAt.getTime())) {
+        throw new BadRequestException('startAt must be a valid datetime');
+      }
+      event.startAt = startAt;
+    }
+    if (body.endAt !== undefined) {
+      const endAt = body.endAt ? new Date(body.endAt) : null;
+      if (body.endAt && Number.isNaN(endAt?.getTime())) {
+        throw new BadRequestException('endAt must be a valid datetime');
+      }
+      event.endAt = endAt;
+    }
+    if (event.endAt && event.endAt < event.startAt) {
+      throw new BadRequestException('endAt must be the same or after startAt');
+    }
+
+    const saved = await this.eventRepo.save(event);
+    const [eventWithHost] = await this.withEventHosts([saved]);
+    return eventWithHost;
+  }
+
+  async deleteEvent(id: string) {
+    const result = await this.eventRepo.delete({ id });
+    if (result.affected === 0) {
+      throw new NotFoundException('Event not found');
+    }
+    return { success: true };
   }
 
   async banUser(userId: string, adminId?: string): Promise<void> {

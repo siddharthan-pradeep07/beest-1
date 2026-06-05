@@ -12,11 +12,13 @@ import { ProjectReview } from '../entities/project-review.entity';
 import { ShopItem } from '../entities/shop-item.entity';
 import { Order } from '../entities/order.entity';
 import { Submission } from '../entities/submission.entity';
+import { Event } from '../entities/event.entity';
 import { ShopModule } from '../shop/shop.module';
 import { HcaModule } from '../hca/hca.module';
 import { DevlogsModule } from '../devlogs/devlogs.module';
 import { FraudReviewModule } from '../fraud-review/fraud-review.module';
 import { ProjectAirtableSyncModule } from '../projects/project-airtable-sync.module';
+import { SlackModule } from '../slack/slack.module';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { AuditService } from './audit.service';
@@ -26,7 +28,7 @@ import { FraudReviewerGuard } from './fraud-reviewer.guard';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Session, Project, AuditLog, NewsItem, ProjectReview, ShopItem, Order, Submission]),
+    TypeOrmModule.forFeature([User, Session, Project, AuditLog, NewsItem, ProjectReview, ShopItem, Order, Submission, Event]),
     AuthModule,
     RsvpModule,
     AuditLogModule,
@@ -35,6 +37,7 @@ import { FraudReviewerGuard } from './fraud-reviewer.guard';
     DevlogsModule,
     FraudReviewModule,
     ProjectAirtableSyncModule,
+    SlackModule,
   ],
   controllers: [AdminController],
   providers: [AdminService, AuditService, SuperAdminGuard, ReviewerGuard, FraudReviewerGuard],

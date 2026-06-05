@@ -12,6 +12,7 @@ export const load: PageServerLoad = async ({ cookies }) => {
 	// Check if user has elevated permissions (don't block page load on failure)
 	let role: string | null = null;
 	let needsIntent = false;
+	let events = [];
 	const token = cookies.get('auth_token');
 	if (token) {
 		try {
@@ -34,7 +35,18 @@ export const load: PageServerLoad = async ({ cookies }) => {
 				needsIntent = data.needsPrompt === true;
 			}
 		} catch { /* non-critical — just don't show the prompt */ }
+
+		try {
+			const eventRes = await fetch(`${BACKEND_URL}/api/admin/events/upcoming`, {
+				headers: { Authorization: `Bearer ${token}` },
+			});
+			if (eventRes.ok) {
+				events = await eventRes.json();
+			}
+		} catch {
+			/* non-critical */
+		}
 	}
 
-	return { user, role, needsIntent };
+	return { user, role, needsIntent, events };
 };

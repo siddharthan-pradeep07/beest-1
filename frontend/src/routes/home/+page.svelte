@@ -15,7 +15,10 @@
 
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { goto, pushState } from '$app/navigation';
+  import { page } from '$app/state';
   import confetti from 'canvas-confetti';
+  import { formatLocal } from '$lib/utils/formatDate';
 
   // Portal action: moves a node to document.body so its position:fixed
   // escapes any ancestor containing-block (.main has filter: saturate which
@@ -31,10 +34,41 @@
   }
 
   let { data } = $props();
+  const initialEvents = data.events ?? [];
 
-  let activeSection = $state('projects');
+  function slackUserUrl(slackId: string) {
+    return `https://hackclub.enterprise.slack.com/team/${encodeURIComponent(slackId)}`;
+  }
+
+  const sectionRoutes: Record<string, string> = {
+    projects: '/projects',
+    shop: '/shop',
+    events: '/events',
+    explore: '/explore',
+    leaderboard: '/leaderboard',
+    faq: '/faq',
+    me: '/me',
+    devlogs: '/devlogs',
+    tutorial: '/tutorial'
+  };
+  const pathSections: Record<string, string> = {
+    '/home': 'projects',
+    '/projects': 'projects',
+    '/shop': 'shop',
+    '/events': 'events',
+    '/explore': 'explore',
+    '/leaderboard': 'leaderboard',
+    '/faq': 'faq',
+    '/me': 'me',
+    '/devlogs': 'devlogs'
+  };
+  const sectionFromPath = (pathname: string) => pathSections[pathname] ?? 'projects';
+
+  let activeSection = $state(sectionFromPath(page.url.pathname));
   let tileLoaded = $state(false);
   let customCursorEnabled = $state(typeof localStorage !== 'undefined' ? localStorage.getItem('customCursor') !== 'off' : true);
+  const EVENT_START = new Date('2026-08-16T00:00:00+02:00').getTime();
+  let eventCountdown = $state({ days: 0, hours: 0, minutes: 0, seconds: 0, live: false });
   let creatingProject = $state(false);
   let editingProject = $state<any>(null);
   type ProjectReview = { id: string; status: 'approved' | 'changes_needed'; feedback: string | null; reviewerName: string | null; createdAt: string };
@@ -66,6 +100,7 @@
   let formError = $state('');
   let auditLog = $state<{ action: string; label: string; createdAt: string }[]>([]);
   let newsItems = $state<{ id: string; text: string; displayDate: string }[]>([]);
+  let eventItems = $state<{ id: string; title: string; description: string | null; hostedBy: string | null; hostedByName: string | null; hostedBySlackId: string | null; startAt: string; endAt: string | null; location: string | null; url: string | null }[]>(initialEvents);
   let leaderboard = $state<{ name: string; hours: number }[]>([]);
   let leaderboardLoading = $state(true);
   let leaderboardTotal = $state(0);
@@ -1037,6 +1072,7 @@
   const navItems = [
     { id: 'projects', label: 'Projects', mobile: true },
     { id: 'shop', label: 'Shop', mobile: true },
+    { id: 'events', label: 'Events', mobile: true },
     { id: 'explore', label: 'Explore', mobile: true },
     { id: 'leaderboard', label: 'Leaderboard', mobile: false },
     { id: 'faq', label: 'FAQ', mobile: false },
@@ -1045,13 +1081,35 @@
     { id: 'tutorial', label: 'Tutorial', mobile: false }
   ];
 
-  function navigate(id: string) {
-    if (id === 'tutorial') { window.location.href = '/tutorial'; return; }
-    if (creatingProject || editingProject || reviewProject) resetForm();
-    activeSection = id;
+  function loadSectionData(id: string) {
     if (id === 'shop') { fetchShopItems(); fetchPipes(); fetchUserOrders(); }
     if (id === 'me') { fetchFulfillmentUpdates(); markFulfillmentRead(); }
     if (id === 'devlogs') { fetchDevlogs(); }
+  }
+
+  function navigate(id: string) {
+    if (id === 'tutorial') { goto('/tutorial'); return; }
+    if (creatingProject || editingProject || reviewProject) resetForm();
+    activeSection = id;
+    loadSectionData(id);
+    pushState(sectionRoutes[id] ?? '/projects', {});
+  }
+
+  function updateEventCountdown() {
+    const remaining = EVENT_START - Date.now();
+    if (remaining <= 0) {
+      eventCountdown = { days: 0, hours: 0, minutes: 0, seconds: 0, live: true };
+      return;
+    }
+
+    const totalSeconds = Math.floor(remaining / 1000);
+    eventCountdown = {
+      days: Math.floor(totalSeconds / 86400),
+      hours: Math.floor((totalSeconds % 86400) / 3600),
+      minutes: Math.floor((totalSeconds % 3600) / 60),
+      seconds: totalSeconds % 60,
+      live: false,
+    };
   }
 
   async function fetchPipes() {
@@ -1331,6 +1389,21 @@
     fetchStickerLink();
     fetchPipes();
     fetchUnreadCount();
+    loadSectionData(activeSection);
+    updateEventCountdown();
+    const countdownTimer = window.setInterval(updateEventCountdown, 1000);
+
+    const handlePopstate = () => {
+      const section = sectionFromPath(window.location.pathname);
+      if (creatingProject || editingProject || reviewProject) resetForm();
+      activeSection = section;
+      loadSectionData(section);
+    };
+    window.addEventListener('popstate', handlePopstate);
+    return () => {
+      window.clearInterval(countdownTimer);
+      window.removeEventListener('popstate', handlePopstate);
+    };
   });
 </script>
 
@@ -1340,7 +1413,7 @@
   <nav class="sidebar pinned" aria-label="Home navigation">
     <div class="sidebar-panel">
       <div class="sidebar-content">
-        <a href="/" class="sidebar-brand">#BEEST</a>
+        <a href="/" class="sidebar-brand">BEEST</a>
         <p class="sidebar-greeting">Hey {data.user.nickname ?? data.user.name ?? 'there!'}</p>
         <ul class="sidebar-nav">
           {#each navItems as item}
@@ -1418,7 +1491,7 @@
                   {#if review.reviewerName}
                     <span class="review-feedback-reviewer">by {review.reviewerName}</span>
                   {/if}
-                  <span class="review-feedback-date">{new Date(review.createdAt).toLocaleDateString()}</span>
+                  <span class="review-feedback-date">{formatLocal(review.createdAt, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
                 </div>
                 {#if review.feedback}
                   <p class="review-feedback-text">{review.feedback}</p>
@@ -1501,7 +1574,7 @@
                 {#if review.reviewerName}
                   <span class="review-feedback-reviewer">by {review.reviewerName}</span>
                 {/if}
-                <span class="review-feedback-date">{new Date(review.createdAt).toLocaleDateString()}</span>
+                <span class="review-feedback-date">{formatLocal(review.createdAt, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
               </div>
               {#if review.feedback}
                 <p class="review-feedback-text">{review.feedback}</p>
@@ -1741,6 +1814,50 @@
     </div>
     {/if}
 
+    {#if activeSection === 'events'}
+    <section class="section section-events">
+      <div class="section-inner">
+        <h2 class="section-title">Upcoming Events</h2>
+        {#if eventItems.length === 0}
+          <p class="section-copy">No upcoming events are scheduled yet.</p>
+        {:else}
+          <div class="events-grid">
+            {#each eventItems as event}
+              <article class="event-card">
+                <div class="event-card-meta">
+                  <time datetime={event.startAt}>{formatLocal(event.startAt)}</time>
+                  {#if event.endAt}
+                    <span>— {formatLocal(event.endAt)}</span>
+                  {/if}
+                </div>
+                <h3>{event.title}</h3>
+                {#if event.hostedBy}
+                  <p class="event-hosted-by">
+                    Hosted by
+                    {#if event.hostedBySlackId}
+                      <a href={slackUserUrl(event.hostedBySlackId)} target="_blank" rel="noopener noreferrer">{event.hostedByName ?? event.hostedBySlackId}</a>
+                    {:else}
+                      {event.hostedByName ?? event.hostedBy}
+                    {/if}
+                  </p>
+                {/if}
+                {#if event.location}
+                  <p class="event-location">{event.location}</p>
+                {/if}
+                {#if event.description}
+                  <p>{event.description}</p>
+                {/if}
+                {#if event.url}
+                  <p><a href={event.url} target="_blank" rel="noopener noreferrer">Event details</a></p>
+                {/if}
+              </article>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    </section>
+    {/if}
+
     {#if showShippingPrompt && shippingCheck}
     <section class="section section-review">
       <div class="section-inner">
@@ -1879,6 +1996,19 @@
           <div>
             <h2 class="section-title">My Projects</h2>
             <p class="section-subtitle">Track your progress and hours.</p>
+          </div>
+          <div class="event-countdown" aria-label="Countdown to Beest">
+            <p class="event-countdown-kicker"><span class="event-countdown-logo">BEESTing</span> starts on</p>
+            {#if eventCountdown.live}
+              <p class="event-countdown-live">Live</p>
+            {:else}
+              <div class="event-countdown-grid">
+                <div class="event-countdown-unit"><strong>{eventCountdown.days}</strong><span>D</span></div>
+                <div class="event-countdown-unit"><strong>{eventCountdown.hours}</strong><span>H</span></div>
+                <div class="event-countdown-unit"><strong>{eventCountdown.minutes}</strong><span>M</span></div>
+                <div class="event-countdown-unit"><strong>{eventCountdown.seconds}</strong><span>S</span></div>
+              </div>
+            {/if}
           </div>
           <div class="progress-key">
             <span class="key-item"><span class="key-swatch approved"></span>Approved</span>
@@ -2589,7 +2719,7 @@
               <article class="devlog-card">
                 <header class="devlog-card-header">
                   <span class="devlog-card-project">{devlogProjectName(dl.projectId) ?? 'Project removed'}</span>
-                  <span class="devlog-card-time">{new Date(dl.createdAt).toLocaleString()}</span>
+                  <span class="devlog-card-time">{formatLocal(dl.createdAt)}</span>
                   <button class="devlog-card-delete" onclick={() => deleteDevlog(dl.id)} title="Delete devlog">×</button>
                 </header>
                 <h3 class="devlog-card-title">{dl.title}</h3>
@@ -2698,7 +2828,13 @@
                 </div>
                 <div class="account-field">
                   <span class="account-label">Slack ID</span>
-                  <span class="account-value">{data.user.slack_id ?? '—'}</span>
+                  <span class="account-value">
+                    {#if data.user.slack_id}
+                      <a href={slackUserUrl(data.user.slack_id)} target="_blank" rel="noopener noreferrer" class="account-link">{data.user.slack_id}</a>
+                    {:else}
+                      —
+                    {/if}
+                  </span>
                 </div>
                 <div class="account-field">
                   <span class="account-label">Gender</span>
@@ -3214,6 +3350,98 @@
     font-size: clamp(14px, 1.2vw, 17px);
     color: #cbc1ae;
     letter-spacing: 0.02em;
+  }
+
+  .section-events {
+    margin-bottom: 48px;
+  }
+
+  .events-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+  }
+
+  .event-card {
+    padding: 24px;
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.1);
+  }
+
+  .event-card h3 {
+    margin: 0 0 10px;
+    font-family: "Stone Breaker", "Courier New", monospace;
+    font-size: 1.25rem;
+    letter-spacing: 0.04em;
+    color: #e6f4fe;
+  }
+
+  .event-card p {
+    margin: 0 0 12px;
+    font-family: "Courier New", monospace;
+    font-size: 15px;
+    line-height: 1.45;
+    color: #cbc1ae;
+  }
+
+  .event-hosted-by {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: fit-content;
+    padding: 4px 9px;
+    border: 1px solid rgba(203, 193, 174, 0.18);
+    border-radius: 4px;
+    background: rgba(203, 193, 174, 0.12);
+    color: #e6f4fe;
+    font-weight: 700;
+    box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.14);
+  }
+
+  .event-hosted-by a {
+    color: #93b4cd;
+    text-decoration: underline;
+  }
+
+  .event-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 16px;
+    font-family: "Sunny Mood", "Courier New", monospace;
+    color: #e6f4fe;
+    font-size: 20px;
+    line-height: 1.1;
+    text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.3);
+  }
+
+  .event-card-meta time,
+  .event-card-meta span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 4px 10px;
+    border: 1px solid rgba(230, 244, 254, 0.18);
+    border-radius: 4px;
+    background: rgba(147, 180, 205, 0.16);
+    box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.18);
+  }
+
+  .event-location {
+    margin: 0 0 12px;
+    font-family: "Courier New", monospace;
+    color: #e6f4fe;
+    font-weight: 600;
+  }
+
+  .event-card a {
+    font-family: "Courier New", monospace;
+    color: #93b4cd;
+    text-decoration: underline;
   }
 
   /* ── bottom row ───────────────────────────────────── */
@@ -5663,6 +5891,122 @@
     padding-top: 48px;
   }
 
+  .event-countdown {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex: 1 1 420px;
+    max-width: 760px;
+    min-width: 260px;
+    margin: 0;
+    padding: 10px 12px;
+    background: rgba(75, 72, 64, 0.58);
+    border: 2px solid rgba(230, 244, 254, 0.16);
+    box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.14);
+  }
+
+  .event-countdown-kicker {
+    margin: 0;
+    font-family: "Sunny Mood", "Courier New", monospace;
+    font-size: 16px;
+    color: #cbc1ae;
+    white-space: nowrap;
+  }
+
+  .event-countdown-logo {
+    font-family: "Stone Breaker", "Courier New", monospace;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    line-height: 1;
+    color: #e6f4fe;
+  }
+
+  .event-countdown-title {
+    margin: 0;
+    font-family: "Stone Breaker", "Courier New", monospace;
+    font-size: clamp(30px, 3.6vw, 50px);
+    line-height: 0.95;
+    color: #e6f4fe;
+    letter-spacing: 0;
+  }
+
+  .event-countdown-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(48px, 1fr));
+    gap: 6px;
+    min-width: min(100%, 250px);
+  }
+
+  .event-countdown-unit {
+    display: grid;
+    place-items: center;
+    min-height: 54px;
+    padding: 6px;
+    background: #586063;
+    border: 1px solid rgba(230, 244, 254, 0.22);
+    box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.16);
+  }
+
+  .event-countdown-unit strong {
+    font-family: "Stone Breaker", "Courier New", monospace;
+    font-size: clamp(20px, 2vw, 30px);
+    line-height: 1;
+    color: #93b4cd;
+  }
+
+  .event-countdown-unit span {
+    font-family: "Sunny Mood", "Courier New", monospace;
+    font-size: 12px;
+    color: #e6f4fe;
+  }
+
+  .event-countdown-live {
+    margin: 0;
+    font-family: "Stone Breaker", "Courier New", monospace;
+    font-size: clamp(24px, 3vw, 38px);
+    color: #93b4cd;
+  }
+
+  @media (max-width: 760px) {
+    .event-countdown {
+      align-items: center;
+      flex: 0 0 auto;
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 8px 10px;
+      width: 100%;
+      max-width: none;
+      min-width: 0;
+      padding: 10px;
+    }
+
+    .event-countdown-kicker {
+      flex: 1 1 100%;
+      white-space: normal;
+    }
+
+    .event-countdown-logo {
+      font-size: 22px;
+    }
+
+    .event-countdown-grid {
+      flex: 1 1 100%;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      min-width: 0;
+    }
+
+    .event-countdown-unit {
+      min-height: 48px;
+      padding: 5px;
+    }
+
+    .event-countdown-unit strong {
+      font-size: 22px;
+    }
+  }
+
   .progress-bar-wrap {
     margin-top: 16px;
     margin-bottom: 32px;
@@ -7229,6 +7573,11 @@
     word-break: break-all;
   }
 
+  .account-link {
+    color: #93b4cd;
+    text-decoration: underline;
+  }
+
   .nickname-form {
     display: flex;
     align-items: baseline;
@@ -7685,6 +8034,13 @@
     .section-header {
       flex-direction: column;
       gap: 8px;
+    }
+
+    .progress-bar-wrap {
+      width: 100%;
+      max-width: none;
+      min-width: 0;
+      margin-top: 4px;
     }
 
     /* Single-column project list on mobile */

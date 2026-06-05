@@ -13,6 +13,7 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SuperAdminGuard } from './super-admin.guard';
 import { ReviewerGuard } from './reviewer.guard';
 import { FraudReviewerGuard } from './fraud-reviewer.guard';
@@ -129,6 +130,57 @@ export class AdminController {
   @Get('stats/signups')
   getSignupsHistory() {
     return this.adminService.getSignupsHistory();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('events/upcoming')
+  listUpcomingEvents() {
+    return this.adminService.listUpcomingEvents();
+  }
+
+  @UseGuards(SuperAdminGuard)
+  @Get('events')
+  listEvents() {
+    return this.adminService.listEvents();
+  }
+
+  @UseGuards(SuperAdminGuard)
+  @Post('events')
+  createEvent(
+    @Body()
+    body: {
+      title?: string;
+      description?: string | null;
+      hostedBy?: string | null;
+      startAt?: string;
+      endAt?: string | null;
+      url?: string | null;
+    },
+  ) {
+    return this.adminService.createEvent(body);
+  }
+
+  @UseGuards(SuperAdminGuard)
+  @Patch('events/:id')
+  updateEvent(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body()
+    body: {
+      title?: string;
+      description?: string | null;
+      hostedBy?: string | null;
+      startAt?: string;
+      endAt?: string | null;
+      url?: string | null;
+    },
+  ) {
+    return this.adminService.updateEvent(id, body);
+  }
+
+  @UseGuards(SuperAdminGuard)
+  @Delete('events/:id')
+  deleteEvent(@Param('id', ParseUUIDPipe) id: string) {
+    return this.adminService.deleteEvent(id);
   }
 
   @UseGuards(SuperAdminGuard)

@@ -9,6 +9,7 @@ export class SlackService {
   private readonly logger = new Logger(SlackService.name);
   private readonly botToken: string | undefined;
   private readonly configured: boolean;
+  private readonly displayNameCache = new Map<string, string | null>();
 
   constructor(private configService: ConfigService) {
     this.botToken = this.configService.get('SLACK_BOT_TOKEN');
@@ -49,5 +50,51 @@ export class SlackService {
     }
 
     return 'full_member';
+  }
+
+  async getUserDisplayName(slackId: string): Promise<string | null> {
+    if (!this.configured) {
+      return null;
+    }
+    if (this.displayNameCache.has(slackId)) {
+      return this.displayNameCache.get(slackId) ?? null;
+    }
+
+    let res: Response;
+    try {
+      res = await fetchWithTimeout(
+        `https://slack.com/api/users.info?user=${encodeURIComponent(slackId)}`,
+        { headers: { Authorization: `Bearer ${this.botToken}` } },
+      );
+    } catch (error) {
+      this.logger.error(`Slack users.info request failed for ${slackId}: ${error instanceof Error ? error.message : String(error)}`);
+      this.displayNameCache.set(slackId, null);
+      return null;
+    }
+
+    if (!res.ok) {
+      this.logger.error(`Slack users.info HTTP error for ${slackId}: ${res.status}`);
+      this.displayNameCache.set(slackId, null);
+      return null;
+    }
+
+    const data = await res.json();
+    if (!data.ok) {
+      this.logger.error(`Slack users.info error for ${slackId}: ${data.error}`);
+      this.displayNameCache.set(slackId, null);
+      return null;
+    }
+
+    const user = data.user;
+    const profile = user?.profile ?? {};
+    const displayName =
+      user?.name ||
+      profile.display_name_normalized ||
+      profile.display_name ||
+      profile.real_name_normalized ||
+      profile.real_name ||
+      null;
+    this.displayNameCache.set(slackId, displayName);
+    return displayName;
   }
 }
