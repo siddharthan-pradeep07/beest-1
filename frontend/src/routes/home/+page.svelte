@@ -1962,7 +1962,7 @@
       <div class="section-inner">
         <div class="event-countdown" aria-label="Countdown to Beest">
           <div>
-            <p class="event-countdown-kicker">Beest starts</p>
+            <p class="event-countdown-kicker"><span class="event-countdown-logo">BEEST</span> starts</p>
             <h2 class="event-countdown-title">July 10, Scheveningen</h2>
           </div>
           {#if eventCountdown.live}
@@ -5772,6 +5772,14 @@
     font-family: "Sunny Mood", "Courier New", monospace;
     font-size: 18px;
     color: #cbc1ae;
+  }
+
+  .event-countdown-logo {
+    font-family: "Stone Breaker", "Courier New", monospace;
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1;
+    color: #e6f4fe;
   }
 
   .event-countdown-title {
