@@ -211,7 +211,40 @@
     { src: '/images/shop/printer.webp', caption: '3D Printer' },
     { src: '/images/shop/stickers.webp', caption: 'Sticker Pack' }
   ];
+
+  // Wall of Fame
+  const wallOfFameProjects = [
+    {
+      title: 'Seaward',
+      author: 'moaaz',
+      description:
+        'A 3D game where the player is in the form of a boat aiming for victory.',
+      link: 'https://moaazkamel.itch.io/seaward'
+    },
+    {
+      title: 'vp3',
+      author: 'Violet',
+      description:
+        'TUI music player',
+      link: 'https://github.com/vivithequeen/vp3/releases/tag/v1'
+    },
+    {
+      title: 'Speedtickers',
+      author: 'Juan',
+      description:
+        'Speedrun your way trough short yet difficult levels before the timer hits zero.',
+      link: 'https://juanes10201.itch.io/speedtickers-latest'
+    },
+    {
+      title: 'Beest Cli',
+      author: 'Peleg',
+      description:
+        'Beest.hackclub.com but in CLI!',
+      link: 'https://beest.peleg2210.me/'
+    },
+  ];
 </script>
+
 
 <svelte:window bind:scrollY />
 
@@ -386,9 +419,47 @@
   </svg>
 </div>
 
+<section class="wall-of-fame">
+  <h2>Wall of Fame</h2>
+  <p class="wall-of-fame-subtitle">
+    Some of the best builds from the Beest community :D
+  </p>
+
+  <div class="wall-of-fame-grid" role="list">
+    {#each wallOfFameProjects as project}
+      <article class="fame-card" role="listitem">
+        <div class="fame-top">
+          <div class="fame-index">◆</div>
+          <div class="fame-meta">
+            <h3>{project.title}</h3>
+            <p class="fame-author">by {project.author}</p>
+          </div>
+        </div>
+        <p class="fame-description">{project.description}</p>
+        <div class="fame-bottom">
+          {#if project.tag}
+            <span class="fame-tag">{project.tag}</span>
+          {/if}
+          {#if project.link}
+            <a class="fame-link" href={project.link} target="_blank" rel="noreferrer">View</a>
+          {/if}
+        </div>
+      </article>
+    {/each}
+  </div>
+</section>
+
+<div class="rock-strata" style="background:#56494a" aria-hidden="true">
+  <svg viewBox="0 0 1440 120" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+    <polygon points="0,35 160,55 320,28 480,60 640,20 800,52 960,30 1120,58 1280,22 1440,45 1440,120 0,120" fill="#635a4e" />
+    <polygon points="0,58 200,72 360,50 520,78 680,44 840,74 1000,48 1160,70 1320,52 1440,65 1440,120 0,120" fill="#4b4840" />
+  </svg>
+</div>
+
 <div class="sticker-bg">
 <section class="sticker-row">
   <div class="diagram" bind:this={diagramEl} style="--r:{annotate}">
+
     <div class="sticker">
       <img src="/images/beest.gif" alt="Strandbeest animation" loading="lazy" decoding="async" />
     </div>
@@ -1036,6 +1107,145 @@
     transform: rotate(calc(var(--sy) * 0.1deg));
   }
 
+  /* ── wall of fame ───────────────────────────────── */
+  .wall-of-fame {
+    background: #635a4e;
+    padding: 88px 48px 96px;
+    color: #e6f4fe;
+    font-family: "Courier New", monospace;
+    position: relative;
+    z-index: 1;
+    border-top: 1px solid rgba(230, 244, 254, 0.12);
+    border-bottom: 1px solid rgba(230, 244, 254, 0.12);
+  }
+
+  .wall-of-fame h2 {
+    margin: 0 auto 18px;
+    max-width: 1100px;
+    color: #ddd7cf;
+    font-family: "Stone Breaker", "Courier New", monospace;
+    font-size: clamp(28px, 3vw, 52px);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    text-shadow: 0 2px 5px rgba(0, 0, 0, 0.55);
+  }
+
+  .wall-of-fame-subtitle {
+    max-width: 1100px;
+    margin: 0 auto 44px;
+    color: #ddd7cf;
+    font-family: "Sunny Mood", "Courier New", monospace;
+    font-size: clamp(18px, 1.7vw, 24px);
+    line-height: 1.6;
+    letter-spacing: 0.02em;
+    text-shadow: 0 2px 5px rgba(0, 0, 0, 0.55);
+  }
+
+  .wall-of-fame-grid {
+    max-width: 1100px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 18px;
+    align-items: stretch;
+  }
+
+  .fame-card {
+    grid-column: span 4;
+    background: rgba(240, 235, 229, 0.97);
+    border: 1px solid #4b4840;
+    box-shadow: 8px 8px 0 rgba(75, 72, 64, 0.95);
+    padding: 18px 16px 14px;
+    border-radius: 6px;
+    color: #4b4840;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 220px;
+  }
+
+  .fame-top {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .fame-index {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    background: #cbc1ae;
+    border: 2px solid #4b4840;
+    border-radius: 999px;
+  }
+
+  .fame-meta h3 {
+    margin: 0;
+    font-family: "Stone Breaker", "Courier New", monospace;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    font-size: 18px;
+    line-height: 1.2;
+    color: #000000;
+  }
+
+  .fame-author {
+    margin: 6px 0 0;
+    font-size: 13px;
+    color: #4b4840;
+    font-family: "Sunny Mood", "Courier New", monospace;
+  }
+
+  .fame-description {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.45;
+    letter-spacing: 0.01em;
+    color: #4b4840;
+    font-family: "Courier New", monospace;
+    flex: 1;
+  }
+
+  .fame-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .fame-tag {
+    display: inline-block;
+    padding: 6px 10px;
+    border: 1px solid rgba(75, 72, 64, 0.75);
+    background: rgba(147, 180, 205, 0.22);
+    color: #4b4840;
+    font-size: 12px;
+    font-family: "Sunny Mood", "Courier New", monospace;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  .fame-link {
+    padding: 7px 10px;
+    border: 1px solid #4b4840;
+    background: #93b4cd;
+    color: #e6f4fe;
+    font-size: 13px;
+    font-family: "Courier New", monospace;
+    font-weight: 700;
+    border-radius: 6px;
+    box-shadow: 2px 2px 0 rgba(75, 72, 64, 0.95);
+    transition: transform 0.15s ease;
+  }
+
+  .fame-link:hover {
+    transform: translate(-1px, -1px);
+  }
+
   /* ── what-is-this ───────────────────────────────── */
   .what-is-this {
     padding: 80px 48px 72px;
@@ -1043,6 +1253,7 @@
     font-family: "Courier New", monospace;
     background: #786e5c;
   }
+
 
   .what-is-this h2 {
     max-width: 1100px;
