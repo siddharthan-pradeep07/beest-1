@@ -139,9 +139,6 @@
 		totalHours: number;
 		aiHours: number;
 		nonAiHours: number;
-		accountTotalHours: number;
-		accountAiHours: number;
-		accountNonAiHours: number;
 		earliestHeartbeat: number | null;
 		previousApprovedHours: number;
 		previousInternalHours: number;
@@ -364,10 +361,10 @@
 				if (res.ok) {
 					hackatimeData = await res.json();
 				} else {
-					hackatimeData = { totalHours: 0, aiHours: 0, nonAiHours: 0, accountTotalHours: 0, accountAiHours: 0, accountNonAiHours: 0, earliestHeartbeat: null, previousApprovedHours: 0, previousInternalHours: 0, hackatimeProjects: [], trustLevel: null, linkedBanned: false, linkedEmail: null, linkedSlackUid: null, beestEmail: null, beestSlackId: null, emailMismatch: false, unifiedDuplicate: false, unifiedError: true };
+					hackatimeData = { totalHours: 0, aiHours: 0, nonAiHours: 0, earliestHeartbeat: null, previousApprovedHours: 0, previousInternalHours: 0, hackatimeProjects: [], trustLevel: null, linkedBanned: false, linkedEmail: null, linkedSlackUid: null, beestEmail: null, beestSlackId: null, emailMismatch: false, unifiedDuplicate: false, unifiedError: true };
 				}
 			} catch {
-				hackatimeData = { totalHours: 0, aiHours: 0, nonAiHours: 0, accountTotalHours: 0, accountAiHours: 0, accountNonAiHours: 0, earliestHeartbeat: null, previousApprovedHours: 0, previousInternalHours: 0, hackatimeProjects: [], trustLevel: null, linkedBanned: false, linkedEmail: null, linkedSlackUid: null, beestEmail: null, beestSlackId: null, emailMismatch: false, unifiedDuplicate: false, unifiedError: true };
+				hackatimeData = { totalHours: 0, aiHours: 0, nonAiHours: 0, earliestHeartbeat: null, previousApprovedHours: 0, previousInternalHours: 0, hackatimeProjects: [], trustLevel: null, linkedBanned: false, linkedEmail: null, linkedSlackUid: null, beestEmail: null, beestSlackId: null, emailMismatch: false, unifiedDuplicate: false, unifiedError: true };
 			} finally {
 				hackatimeLoading = false;
 				// Default the reviewer's inputs to the DELTA of new Hackatime work
@@ -2086,11 +2083,11 @@
 											</div>
 											<div class="ht-breakdown-panel">
 												<ProjectHourBreakdown
-													title="Account-wide Hackatime Hours"
+													title="Project Hackatime Hours"
 													perProjectLabel="Linked project hours"
-													totalHours={hackatimeData.accountTotalHours}
-													aiHours={hackatimeData.accountAiHours}
-													nonAiHours={hackatimeData.accountNonAiHours}
+													totalHours={hackatimeData.totalHours}
+													aiHours={hackatimeData.aiHours}
+													nonAiHours={hackatimeData.nonAiHours}
 													perProject={hackatimeData.hackatimeProjects.map((hp) => ({ name: hp.name, hours: hp.hours }))}
 												/>
 											</div>

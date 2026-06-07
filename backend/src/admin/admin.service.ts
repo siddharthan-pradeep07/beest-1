@@ -1076,7 +1076,6 @@ export class AdminService {
 
       let matched: { name: string; hours: number; languages: string[]; firstHeartbeat: number | null }[] = [];
       let categories: { name: string; totalSeconds: number; percent: number }[] = [];
-      let accountCategories: { name: string; totalSeconds: number; percent: number }[] = [];
       if (projectsRes.ok) {
         const projData = await projectsRes.json();
         const allProjects: {
@@ -1214,52 +1213,6 @@ export class AdminService {
       ) / 10;
       const nonAiHours = Math.max(0, Math.round((totalHours - aiHours) * 10) / 10);
 
-      let accountTotalHours = totalHours;
-      let accountAiHours = aiHours;
-      let accountNonAiHours = nonAiHours;
-      try {
-        const accountStatsRes = await this.hackatimeGet(
-          `/api/v1/users/${encodeURIComponent(String(hackatimeUserId))}/stats?total_seconds=true`,
-        );
-        if (accountStatsRes.ok) {
-          const accountStatsBody = await accountStatsRes.json();
-          const rawAccountCats = accountStatsBody?.data?.categories ?? accountStatsBody?.categories ?? [];
-          const rawAccountTotal = accountStatsBody?.data?.total_seconds ?? accountStatsBody?.total_seconds ?? null;
-          const parsedTotal = typeof rawAccountTotal === 'number' ? rawAccountTotal : Number(rawAccountTotal);
-          if (Number.isFinite(parsedTotal) && parsedTotal > 0 && Array.isArray(rawAccountCats)) {
-            const parsed = rawAccountCats
-              .map((c: { name?: unknown; total_seconds?: unknown }) => {
-                const secs = typeof c?.total_seconds === 'number' ? c.total_seconds : Number(c?.total_seconds);
-                return {
-                  name: typeof c?.name === 'string' ? c.name : '',
-                  totalSeconds: Number.isFinite(secs) && secs > 0 ? secs : 0,
-                };
-              })
-              .filter((c) => c.name && c.totalSeconds > 0);
-            const sum = parsed.reduce((s, c) => s + c.totalSeconds, 0);
-            if (sum > 0) {
-              accountCategories = parsed
-                .map((c) => ({
-                  name: c.name,
-                  totalSeconds: c.totalSeconds,
-                  percent: Math.round((c.totalSeconds / sum) * 1000) / 10,
-                }))
-                .sort((a, b) => b.percent - a.percent);
-              accountTotalHours = Math.round((parsedTotal / 3600) * 10) / 10;
-              const accountAiSeconds = accountCategories
-                .filter((cat) =>
-                  AdminService.AI_BREAKDOWN_CATEGORIES.has(cat.name.toLowerCase()),
-                )
-                .reduce((sum2, cat) => sum2 + cat.totalSeconds, 0);
-              accountAiHours = Math.round((accountAiSeconds / 3600) * 10) / 10;
-              accountNonAiHours = Math.max(0, Math.round((accountTotalHours - accountAiHours) * 10) / 10);
-            }
-          }
-        }
-      } catch (err) {
-        this.logger.warn(`Hackatime account stats failed for project ${projectId}: ${err}`);
-      }
-
       const heartbeatTimes = matched
         .map((p) => p.firstHeartbeat)
         .filter((t): t is number => t !== null);
@@ -1279,10 +1232,6 @@ export class AdminService {
         totalHours,
         aiHours,
         nonAiHours,
-        accountCategories,
-        accountTotalHours,
-        accountAiHours,
-        accountNonAiHours,
         earliestHeartbeat,
         previousApprovedHours,
         previousInternalHours,
@@ -1306,10 +1255,6 @@ export class AdminService {
         totalHours: 0,
         aiHours: 0,
         nonAiHours: 0,
-        accountCategories: [],
-        accountTotalHours: 0,
-        accountAiHours: 0,
-        accountNonAiHours: 0,
         earliestHeartbeat: null,
         previousApprovedHours: project.overrideHours ?? 0,
         previousInternalHours: project.internalHours ?? 0,
