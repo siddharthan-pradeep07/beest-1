@@ -37,12 +37,11 @@
 	}
 
 	$effect(() => {
-		if (typeof document !== 'undefined') {
-			checkImpersonating();
-			captureAttribution();
-			if (typeof localStorage !== 'undefined' && localStorage.getItem('customCursor') !== 'off') {
-				document.documentElement.classList.add('custom-cursor');
-			}
+		if (typeof document === 'undefined') return;
+		checkImpersonating();
+		captureAttribution();
+		if (typeof localStorage !== 'undefined' && localStorage.getItem('customCursor') !== 'off') {
+			document.documentElement.classList.add('custom-cursor');
 		}
 	});
 </script>
