@@ -2,7 +2,7 @@ import { env } from '$env/dynamic/private';
 import type { Cookies } from '@sveltejs/kit';
 
 const BACKEND_URL = env.BACKEND_URL ?? 'http://localhost:3001';
-export const AUTH_TOKEN_MAX_AGE = 7 * 24 * 60 * 60;
+export const AUTH_TOKEN_MAX_AGE = 60 * 60;
 
 const COOKIE_OPTS = {
 	path: '/',

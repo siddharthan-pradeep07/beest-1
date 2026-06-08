@@ -236,7 +236,19 @@ export class AuthService {
   }
 
   /**
-   * Validates a refresh token, rotates it, and issues a new JWT.
+   * Validates a refresh token and issues a new (short-lived) JWT.
+   *
+   * The refresh token itself is intentionally NOT rotated. Rotation
+   * (delete-old, mint-new on every call) races badly: a single page load
+   * fans out into several parallel requests that all present the same
+   * refresh token, so the first rotates it and the rest fail validation —
+   * silently logging the user out. Because the access token is short-lived,
+   * this happened roughly hourly. Keeping the token stable with a sliding
+   * expiry makes concurrent refreshes idempotent.
+   *
+   * Revocation still works: the session is server-side, so logout / ban
+   * deletes the row and the next refresh fails. The ban check below means a
+   * banned user is locked out within one access-token lifetime (~1h).
    */
   async refreshAuth(
     refreshToken: string,
@@ -254,9 +266,23 @@ export class AuthService {
 
     const user = session.user;
 
-    // Rotate: delete old session, create new one
-    await this.sessionRepo.remove(session);
-    const newRefreshToken = await this.createSession(user.id);
+    // Deny refresh for banned users so revocation actually takes effect.
+    // Fail open on a transient perms-lookup error rather than logging
+    // everyone out if the perms service is down.
+    try {
+      const perms = await this.rsvpService.getPerms(user.email);
+      if (perms === 'Banned') {
+        await this.sessionRepo.remove(session);
+        throw new Error('Account banned');
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message === 'Account banned') throw err;
+      this.logger.error(`Perms check failed during refresh for ${user.id}: ${err}`);
+    }
+
+    // Slide the refresh window forward; keep the same token (no rotation).
+    session.expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_MS);
+    await this.sessionRepo.save(session);
 
     const token = this.jwtService.sign({
       sub: user.hcaSub,
@@ -270,7 +296,7 @@ export class AuthService {
       gender: user.gender,
     });
 
-    return { token, refreshToken: newRefreshToken };
+    return { token, refreshToken };
   }
 
   /**

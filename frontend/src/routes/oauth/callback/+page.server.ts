@@ -59,7 +59,7 @@ export const load: PageServerLoad = async ({ url, cookies }) => {
 		redirect(302, 'https://fraud.hackclub.com/');
 	}
 
-	// Store JWT (7d) and refresh token (90d) in httpOnly cookies
+	// Store JWT (1h) and refresh token (90d) in httpOnly cookies
 	cookies.set('auth_token', token, { ...cookieOpts, maxAge: AUTH_TOKEN_MAX_AGE });
 	cookies.set('refresh_token', refreshToken, {
 		...cookieOpts,
