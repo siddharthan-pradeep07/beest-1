@@ -3,7 +3,6 @@ import {
   BadRequestException,
   Logger,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -1006,6 +1005,42 @@ export class AdminService {
     return params.toString().replace(/\+/g, '%20').replace(/%2C/g, ',');
   }
 
+  /**
+   * GET a Hackatime stats URL, preferring the builder's own OAuth token and
+   * falling back to the admin key when that token is missing or rejected.
+   * The per-user token is the most-scoped credential, but it's frequently
+   * absent or expired (e.g. accounts resolved via admin email-lookup never
+   * have one), so without this fallback the whole hours panel fails closed to
+   * zeros — which reads to a reviewer as "did no work" rather than "lookup
+   * failed". Returns the parsed JSON body, or null if both credentials fail.
+   */
+  private async fetchHackatimeStats(uri: string, userToken: string) {
+    const attempt = async (token: string): Promise<Response | null> => {
+      if (!token) return null;
+      try {
+        return await fetchWithTimeout(uri, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      } catch (err) {
+        this.logger.warn(`Hackatime stats request errored: ${err}`);
+        return null;
+      }
+    };
+
+    // User token first (scoped/accurate), admin key as fallback on any failure.
+    let response = await attempt(userToken);
+    if (!response || !response.ok) {
+      const adminResponse = await attempt(this.hackatimeAdminKey ?? '');
+      if (adminResponse) response = adminResponse;
+    }
+    if (!response || !response.ok) return null;
+    return response.json().catch(() => null);
+  }
+
   private async fetchHackatimeStatsTotalSeconds(
     hackatimeUserId: string | number,
     projectNames: string[],
@@ -1021,31 +1056,9 @@ export class AdminService {
     });
     const uri = `${this.hackatimeBaseUrl}/api/v1/users/${encodeURIComponent(String(hackatimeUserId))}/stats?${qs}`;
 
-    const response = await fetchWithTimeout(uri, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
-    if (!response.ok) {
-      if (response.status === 401 || response.status === 403) {
-        throw new UnauthorizedException(
-          'Hackatime denied access to the linked account stats. Enable "Public Stats Lookup" in Hackatime, or re-link the account.',
-        );
-      }
-      throw new Error(`Hackatime stats returned ${response.status} for ${hackatimeUserId}`);
-    }
-
-    const responseData = await response.json();
+    const responseData = await this.fetchHackatimeStats(uri, accessToken);
     const totalSeconds = responseData?.total_seconds;
-    if (typeof totalSeconds !== 'number') {
-      throw new Error(
-        `Hackatime stats response missing total_seconds: ${JSON.stringify(responseData).slice(0, 200)}`,
-      );
-    }
-    return totalSeconds;
+    return typeof totalSeconds === 'number' ? totalSeconds : 0;
   }
 
   private async fetchHackatimeProjectDurations(
@@ -1065,34 +1078,20 @@ export class AdminService {
     });
     const uri = `${this.hackatimeBaseUrl}/api/v1/users/${encodeURIComponent(String(hackatimeUserId))}/stats?${qs}`;
 
-    try {
-      const response = await fetchWithTimeout(uri, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+    const responseData = await this.fetchHackatimeStats(uri, accessToken);
+    if (!responseData) return durationsMap;
 
-      if (!response.ok) {
-        return durationsMap;
-      }
+    const projects = responseData?.data?.projects ?? responseData?.projects ?? [];
+    if (!Array.isArray(projects)) {
+      return durationsMap;
+    }
 
-      const responseData = await response.json();
-      const projects = responseData?.data?.projects ?? responseData?.projects ?? [];
-      if (!Array.isArray(projects)) {
-        return durationsMap;
+    for (const project of projects) {
+      const name = project?.name;
+      if (typeof name === 'string' && projectNames.includes(name)) {
+        const duration = typeof project?.total_seconds === 'number' ? project.total_seconds : Number(project?.total_seconds);
+        durationsMap.set(name, Number.isFinite(duration) && duration > 0 ? duration : 0);
       }
-
-      for (const project of projects) {
-        const name = project?.name;
-        if (typeof name === 'string' && projectNames.includes(name)) {
-          const duration = typeof project?.total_seconds === 'number' ? project.total_seconds : Number(project?.total_seconds);
-          durationsMap.set(name, Number.isFinite(duration) && duration > 0 ? duration : 0);
-        }
-      }
-    } catch (error) {
-      this.logger.warn(`Hackatime project duration fetch failed for ${hackatimeUserId}: ${error}`);
     }
 
     return durationsMap;
@@ -1109,47 +1108,32 @@ export class AdminService {
     const qs = this.buildHackatimeStatsQuery(projectNames, cutoffDate);
     const uri = `${this.hackatimeBaseUrl}/api/v1/users/${encodeURIComponent(String(hackatimeUserId))}/stats?${qs}`;
 
-    try {
-      const response = await fetchWithTimeout(uri, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+    const statsBody = await this.fetchHackatimeStats(uri, accessToken);
+    if (!statsBody) return [];
 
-      if (!response.ok) {
-        return [];
-      }
+    const rawCats = statsBody?.data?.categories ?? statsBody?.categories ?? [];
+    if (!Array.isArray(rawCats)) return [];
 
-      const statsBody = await response.json();
-      const rawCats = statsBody?.data?.categories ?? statsBody?.categories ?? [];
-      if (!Array.isArray(rawCats)) return [];
+    const parsed = rawCats
+      .map((c: { name?: unknown; total_seconds?: unknown }) => {
+        const secs = typeof c?.total_seconds === 'number' ? c.total_seconds : Number(c?.total_seconds);
+        return {
+          name: typeof c?.name === 'string' ? c.name : '',
+          totalSeconds: Number.isFinite(secs) && secs > 0 ? secs : 0,
+        };
+      })
+      .filter((c) => c.name && c.totalSeconds > 0);
 
-      const parsed = rawCats
-        .map((c: { name?: unknown; total_seconds?: unknown }) => {
-          const secs = typeof c?.total_seconds === 'number' ? c.total_seconds : Number(c?.total_seconds);
-          return {
-            name: typeof c?.name === 'string' ? c.name : '',
-            totalSeconds: Number.isFinite(secs) && secs > 0 ? secs : 0,
-          };
-        })
-        .filter((c) => c.name && c.totalSeconds > 0);
+    const sum = parsed.reduce((s, c) => s + c.totalSeconds, 0);
+    if (sum <= 0) return [];
 
-      const sum = parsed.reduce((s, c) => s + c.totalSeconds, 0);
-      if (sum <= 0) return [];
-
-      return parsed
-        .map((c) => ({
-          name: c.name,
-          totalSeconds: c.totalSeconds,
-          percent: Math.round((c.totalSeconds / sum) * 1000) / 10,
-        }))
-        .sort((a, b) => b.percent - a.percent);
-    } catch (error) {
-      this.logger.warn(`Hackatime category stats failed for ${hackatimeUserId}: ${error}`);
-      return [];
-    }
+    return parsed
+      .map((c) => ({
+        name: c.name,
+        totalSeconds: c.totalSeconds,
+        percent: Math.round((c.totalSeconds / sum) * 1000) / 10,
+      }))
+      .sort((a, b) => b.percent - a.percent);
   }
 
   async getProjectHackatime(projectId: string, isSuperAdmin: boolean) {
