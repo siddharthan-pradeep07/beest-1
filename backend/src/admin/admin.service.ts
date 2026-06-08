@@ -23,6 +23,7 @@ import { HcaService } from '../hca/hca.service';
 import { fetchWithTimeout } from '../fetch.util';
 import { ProjectAirtableSyncService } from '../projects/project-airtable-sync.service';
 import { SlackService } from '../slack/slack.service';
+import { ShopService } from '../shop/shop.service';
 import { getFileHoursForProject } from '../hackatime/hackatime-file-breakdown';
 
 const VALID_PERMS = [
@@ -108,6 +109,7 @@ export class AdminService {
     private readonly hcaService: HcaService,
     private readonly airtableSync: ProjectAirtableSyncService,
     private readonly slackService: SlackService,
+    private readonly shopService: ShopService,
   ) {
     this.hackatimeBaseUrl = this.configService.get(
       'HACKATIME_BASE_URL',
@@ -374,13 +376,50 @@ export class AdminService {
     // 2. Revoke all sessions for this user
     await this.sessionRepo.delete({ userId });
 
-    // 3. Audit log on the banned user's record
-    const identifier = user.name || user.slackId || user.hcaSub;
-    await this.auditLogService.log(userId, 'admin_ban', `Banned user ${identifier}`);
+    // 3. Pull the user's in-flight work out of the review/audit queues so
+    //    reviewers don't waste time on a banned account. 'unreviewed' projects
+    //    sit in the first-review queue and 'fraud_pending' ones in the audit
+    //    queue; both move to 'changes_needed' — the same terminal state a
+    //    ban-via-project review leaves a project in. Open submissions are
+    //    flipped too so nothing keeps the project queued.
+    const queuedProjects = await this.projectRepo.find({
+      where: { userId, status: In(['unreviewed', 'fraud_pending']) },
+      select: ['id'],
+    });
+    if (queuedProjects.length > 0) {
+      const projectIds = queuedProjects.map((p) => p.id);
+      await this.projectRepo.update(
+        { id: In(projectIds) },
+        { status: 'changes_needed' },
+      );
+      await this.submissionRepo.update(
+        { projectId: In(projectIds), status: 'unreviewed' },
+        { status: 'changes_needed' },
+      );
+    }
 
-    // 4. Audit log on the admin's record
+    // 4. Refund the user's pending shop orders so they drop out of the
+    //    fulfilment queue. refundOrder restocks the item and cascade-deletes
+    //    the order's fulfilment updates; already-fulfilled orders are left as-is.
+    const pendingOrders = await this.orderRepo.find({
+      where: { userId, status: 'pending' },
+      select: ['id'],
+    });
+    for (const order of pendingOrders) {
+      await this.shopService.refundOrder(order.id, { adminId });
+    }
+
+    // 5. Audit log on the banned user's record
+    const identifier = user.name || user.slackId || user.hcaSub;
+    const cleanup =
+      queuedProjects.length || pendingOrders.length
+        ? ` (cleared ${queuedProjects.length} queued project${queuedProjects.length === 1 ? '' : 's'}, ${pendingOrders.length} pending order${pendingOrders.length === 1 ? '' : 's'})`
+        : '';
+    await this.auditLogService.log(userId, 'admin_ban', `Banned user ${identifier}${cleanup}`);
+
+    // 6. Audit log on the admin's record
     if (adminId) {
-      await this.auditLogService.log(adminId, 'admin_ban', `Banned user ${identifier}`);
+      await this.auditLogService.log(adminId, 'admin_ban', `Banned user ${identifier}${cleanup}`);
     }
   }
 
