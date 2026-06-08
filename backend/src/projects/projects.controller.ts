@@ -263,7 +263,8 @@ export class ProjectsController {
       id: r.id,
       status: r.status,
       feedback: r.feedback,
-      reviewerName: r.reviewer?.name ?? null,
+      reviewerName: r.hideReviewerName ? null : r.reviewer?.name ?? null,
+      hideReviewerName: r.hideReviewerName ?? false,
       createdAt: r.createdAt,
     }));
   }

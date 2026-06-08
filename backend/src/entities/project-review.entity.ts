@@ -29,6 +29,9 @@ export class ProjectReview {
   @JoinColumn({ name: 'reviewer_id' })
   reviewer: User | null;
 
+  @Column({ name: 'hide_reviewer_name', default: false })
+  hideReviewerName: boolean;
+
   @Column({ name: 'submission_id', nullable: true })
   submissionId: string | null;
 

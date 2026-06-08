@@ -71,7 +71,14 @@
   let eventCountdown = $state({ days: 0, hours: 0, minutes: 0, seconds: 0, live: false });
   let creatingProject = $state(false);
   let editingProject = $state<any>(null);
-  type ProjectReview = { id: string; status: 'approved' | 'changes_needed'; feedback: string | null; reviewerName: string | null; createdAt: string };
+  type ProjectReview = {
+    id: string;
+    status: 'approved' | 'changes_needed';
+    feedback: string | null;
+    reviewerName: string | null;
+    hideReviewerName?: boolean;
+    createdAt: string;
+  };
   let editingProjectReviews = $state<ProjectReview[]>([]);
   let editingProjectReviewsLoading = $state(false);
   let editingProjectQueue = $state<{ total: number; position: number } | null>(null);
@@ -1456,7 +1463,9 @@
               <div class="review-feedback-card review-feedback-{review.status}">
                 <div class="review-feedback-header">
                   <span class="review-feedback-badge {review.status}">{review.status === 'changes_needed' ? 'Changes Needed' : 'Approved'}</span>
-                  {#if review.reviewerName}
+                  {#if review.hideReviewerName}
+                    <span class="review-feedback-reviewer">by a reviewer</span>
+                  {:else if review.reviewerName}
                     <span class="review-feedback-reviewer">by {review.reviewerName}</span>
                   {/if}
                   <span class="review-feedback-date">{formatLocal(review.createdAt, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
@@ -1546,7 +1555,9 @@
             <div class="review-feedback-card review-feedback-{review.status}">
               <div class="review-feedback-header">
                 <span class="review-feedback-badge {review.status}">{review.status === 'changes_needed' ? 'Changes Needed' : 'Approved'}</span>
-                {#if review.reviewerName}
+                {#if review.hideReviewerName}
+                  <span class="review-feedback-reviewer">by a reviewer</span>
+                {:else if review.reviewerName}
                   <span class="review-feedback-reviewer">by {review.reviewerName}</span>
                 {/if}
                 <span class="review-feedback-date">{formatLocal(review.createdAt, { year: 'numeric', month: 'short', day: 'numeric' })}</span>

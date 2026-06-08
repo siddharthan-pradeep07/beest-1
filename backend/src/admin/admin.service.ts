@@ -24,6 +24,7 @@ import { HcaService } from '../hca/hca.service';
 import { fetchWithTimeout } from '../fetch.util';
 import { ProjectAirtableSyncService } from '../projects/project-airtable-sync.service';
 import { SlackService } from '../slack/slack.service';
+import { getFileHoursForProject } from '../hackatime/hackatime-file-breakdown';
 
 const VALID_PERMS = [
   'User',
@@ -390,6 +391,7 @@ export class AdminService {
     feedback: string | null,
     internalNote: string | null,
     userNote: string | null | undefined,
+    hideReviewerName: boolean,
     overrideJustification: string | null,
   ) {
     const project = await this.projectRepo.findOne({
@@ -417,6 +419,7 @@ export class AdminService {
       status: 'ban',
       feedback: feedback || null,
       internalNote: internalNote || null,
+      hideReviewerName,
       overrideJustification: overrideJustification || null,
     });
     await this.reviewRepo.save(review);
@@ -566,6 +569,7 @@ export class AdminService {
     feedback: string | null,
     internalNote: string | null,
     userNote: string | null | undefined,
+    hideReviewerName: boolean,
     overrideJustification: string | null,
     overrideHours: number | null,
     internalHours: number | null,
@@ -748,6 +752,7 @@ export class AdminService {
       status,
       feedback: feedback || null,
       internalNote: internalNote || null,
+      hideReviewerName,
       overrideJustification: overrideJustification || null,
     });
     await this.reviewRepo.save(review);
@@ -868,6 +873,7 @@ export class AdminService {
       ...(includeInternal ? { internalNote: r.internalNote } : {}),
       overrideJustification: r.overrideJustification,
       reviewerName: r.reviewer?.name ?? null,
+      hideReviewerName: r.hideReviewerName ?? false,
       createdAt: r.createdAt,
     }));
   }
@@ -945,6 +951,7 @@ export class AdminService {
       totalHours: 0,
       aiHours: 0,
       nonAiHours: 0,
+      fileBreakdown: [],
       earliestHeartbeat: null,
       startDate: AdminService.HACKATIME_EVENT_START,
       previousApprovedHours: project?.overrideHours ?? 0,
@@ -1291,6 +1298,29 @@ export class AdminService {
             ),
           ]);
 
+          const endDate = AdminService.ymdUtc(new Date(Date.now() + 86_400_000));
+          const fileBreakdowns = await Promise.all(
+            projectNames.map((projectName) =>
+              getFileHoursForProject({
+                baseUrl: this.hackatimeBaseUrl,
+                adminKey: this.hackatimeAdminKey!,
+                hackatimeUserId,
+                projectName,
+                startDate: AdminService.HACKATIME_EVENT_START,
+                endDate,
+              }),
+            ),
+          );
+          const fileBreakdown = fileBreakdowns
+            .flat()
+            .reduce<Map<string, number>>((acc, row) => {
+              acc.set(row.file, Math.round(((acc.get(row.file) ?? 0) + row.hours) * 10) / 10);
+              return acc;
+            }, new Map<string, number>());
+          const fileBreakdownRows = [...fileBreakdown.entries()]
+            .map(([file, hours]) => ({ file, hours }))
+            .sort((a, b) => b.hours - a.hours);
+
           categories = categoryBreakdown;
 
           matched = matchedRaw.map((p) => {
@@ -1331,6 +1361,7 @@ export class AdminService {
             totalHours: totalRounded,
             aiHours: aiRounded,
             nonAiHours: nonAiRounded,
+            fileBreakdown: fileBreakdownRows,
             earliestHeartbeat,
             startDate: AdminService.HACKATIME_EVENT_START,
             previousApprovedHours,
@@ -1359,6 +1390,7 @@ export class AdminService {
         totalHours: 0,
         aiHours: 0,
         nonAiHours: 0,
+        fileBreakdown: [],
         earliestHeartbeat: null,
         startDate: AdminService.HACKATIME_EVENT_START,
         previousApprovedHours,
@@ -1383,6 +1415,7 @@ export class AdminService {
         totalHours: 0,
         aiHours: 0,
         nonAiHours: 0,
+        fileBreakdown: [],
         earliestHeartbeat: null,
         startDate: AdminService.HACKATIME_EVENT_START,
         previousApprovedHours: project.overrideHours ?? 0,
@@ -1549,7 +1582,6 @@ export class AdminService {
     this.unreviewedHoursCache = { payload, timestamp: Date.now() };
     return payload;
   }
-
   // ── Daily Active Users ──
 
   async getDailyActiveUsers(): Promise<{ count: number }> {

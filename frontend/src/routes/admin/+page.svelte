@@ -154,6 +154,7 @@
 		categories?: { name: string; totalSeconds: number; percent: number }[];
 		unifiedDuplicate: boolean;
 		unifiedError: boolean;
+		fileBreakdown: { file: string; hours: number }[];
 	}
 	let expandedProjectId = $state<string | null>(null);
 	let hackatimeData = $state<HackatimeDetail | null>(null);
@@ -163,6 +164,7 @@
 	let userFeedback = $state('');
 	let internalNote = $state('');
 	let persistentUserNote = $state('');
+	let hideReviewerName = $state(false);
 	let reviewSubmitting = $state(false);
 	let customHours = $state(0);
 	let userFacingHours = $state(0);
@@ -185,6 +187,7 @@
 		internalNote?: string | null;
 		overrideJustification: string | null;
 		reviewerName: string | null;
+		hideReviewerName: boolean;
 		createdAt: string;
 	}
 	let pastReviews = $state<ReviewRecord[]>([]);
@@ -227,6 +230,7 @@
 					feedback: userFeedback.trim() || null,
 					internalNote: internalNote.trim() || null,
 					userNote: persistentUserNote.trim() || null,
+					hideReviewerName,
 					overrideJustification: overrideJustification.trim() || null,
 					overrideHours: userFacingHours,
 					internalHours: customHours,
@@ -338,6 +342,7 @@
 			userFeedback = '';
 			internalNote = '';
 			persistentUserNote = '';
+			hideReviewerName = false;
 			projectDevlogs = [];
 			return;
 		}
@@ -348,6 +353,7 @@
 		internalNote = '';
 		overrideJustification = '';
 		lastAutoJustification = '';
+		hideReviewerName = false;
 		pastReviews = [];
 		projectDevlogs = [];
 
@@ -362,10 +368,10 @@
 				if (res.ok) {
 					hackatimeData = await res.json();
 				} else {
-					hackatimeData = { totalHours: 0, aiHours: 0, nonAiHours: 0, earliestHeartbeat: null, startDate: null, previousApprovedHours: 0, previousInternalHours: 0, hackatimeProjects: [], trustLevel: null, linkedBanned: false, linkedEmail: null, linkedSlackUid: null, beestEmail: null, beestSlackId: null, emailMismatch: false, unifiedDuplicate: false, unifiedError: true };
+					hackatimeData = { totalHours: 0, aiHours: 0, nonAiHours: 0, fileBreakdown: [], earliestHeartbeat: null, startDate: null, previousApprovedHours: 0, previousInternalHours: 0, hackatimeProjects: [], trustLevel: null, linkedBanned: false, linkedEmail: null, linkedSlackUid: null, beestEmail: null, beestSlackId: null, emailMismatch: false, unifiedDuplicate: false, unifiedError: true };
 				}
 			} catch {
-				hackatimeData = { totalHours: 0, aiHours: 0, nonAiHours: 0, earliestHeartbeat: null, startDate: null, previousApprovedHours: 0, previousInternalHours: 0, hackatimeProjects: [], trustLevel: null, linkedBanned: false, linkedEmail: null, linkedSlackUid: null, beestEmail: null, beestSlackId: null, emailMismatch: false, unifiedDuplicate: false, unifiedError: true };
+				hackatimeData = { totalHours: 0, aiHours: 0, nonAiHours: 0, fileBreakdown: [], earliestHeartbeat: null, startDate: null, previousApprovedHours: 0, previousInternalHours: 0, hackatimeProjects: [], trustLevel: null, linkedBanned: false, linkedEmail: null, linkedSlackUid: null, beestEmail: null, beestSlackId: null, emailMismatch: false, unifiedDuplicate: false, unifiedError: true };
 			} finally {
 				hackatimeLoading = false;
 				// Default the reviewer's inputs to the DELTA of new Hackatime work
@@ -2093,6 +2099,19 @@
 													startDate={hackatimeData.startDate}
 												/>
 											</div>
+
+											{#if hackatimeData.fileBreakdown?.length}
+											<div class="ht-files">
+												<div class="ht-files-heading">Hours by file</div>
+												{#each hackatimeData.fileBreakdown as row}
+												<div class="ht-file-row">
+													<span class="ht-file-name">{row.file}</span>
+													<span class="ht-file-hours">{row.hours}h</span>
+												</div>
+											{/each}
+											</div>
+											{/if}
+											
 											{#if hackatimeData.linkedBanned || hackatimeData.emailMismatch || hackatimeData.trustLevel === 'red'}
 												<div class="ht-ownership-alert">
 													{#if hackatimeData.emailMismatch}
@@ -2213,6 +2232,11 @@
 										</label>
 									</div>
 
+									<label class="review-anonymous-toggle">
+										<input type="checkbox" bind:checked={hideReviewerName} />
+										<span>Hide my name from the project owner</span>
+									</label>
+
 									<div class="review-actions">
 										<button class="review-btn review-btn-approve" onclick={() => reviewProject('approved')} disabled={reviewSubmitting || !justificationOk}>Approve</button>
 										<button class="review-btn review-btn-reject" onclick={() => reviewProject('changes_needed')} disabled={reviewSubmitting || !userFeedback.trim()}>Reject</button>
@@ -2254,6 +2278,9 @@
 											<div class="review-card-header">
 												<span class="badge badge-{review.status} badge-sm">{review.status}</span>
 												<span class="review-card-reviewer">{review.reviewerName ?? 'Unknown'}</span>
+												{#if review.hideReviewerName}
+													<span class="review-card-anonymous">hidden from owner</span>
+												{/if}
 												<span class="review-card-date">{formatDate(review.createdAt)}</span>
 											</div>
 											{#if review.feedback}
@@ -3322,6 +3349,22 @@
 		color: #aaa;
 	}
 
+	.review-anonymous-toggle {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		margin: 0.15rem 0 0.8rem;
+		color: #cfcfcf;
+		font-size: 0.85rem;
+		cursor: pointer;
+	}
+
+	.review-anonymous-toggle input {
+		width: 0.95rem;
+		height: 0.95rem;
+		accent-color: #5b9bd5;
+	}
+
 	.user-feedback {
 		background: #1e1e1e;
 		border: 2px solid #777;
@@ -3574,6 +3617,18 @@
 	.review-card-reviewer {
 		color: #ccc;
 		font-weight: 600;
+	}
+
+	.review-card-anonymous {
+		font-size: 0.72rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: #8ec0ec;
+		background: rgba(91, 155, 213, 0.12);
+		border: 1px solid rgba(91, 155, 213, 0.35);
+		border-radius: 999px;
+		padding: 0.08rem 0.4rem;
 	}
 
 	.review-card-date {
@@ -4455,7 +4510,13 @@
 	.admin-shell.light .reviews-heading { color: #333; }
 	.admin-shell.light .review-card { background: #f5f4f1; border-color: #666; }
 	.admin-shell.light .review-card-reviewer { color: #222; }
+	.admin-shell.light .review-card-anonymous {
+		color: #2e6c9b;
+		background: rgba(91, 155, 213, 0.08);
+		border-color: rgba(91, 155, 213, 0.25);
+	}
 	.admin-shell.light .review-card-date { color: #777; }
+	.admin-shell.light .review-anonymous-toggle { color: #333; }
 	.admin-shell.light .review-card-label { color: #666; }
 	.admin-shell.light .review-card-text { color: #333; }
 	.admin-shell.light .review-card-internal { background: rgba(180, 140, 50, 0.08); }
