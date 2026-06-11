@@ -5,8 +5,9 @@
 	import ProjectHourBreakdown from '$lib/components/ProjectHourBreakdown.svelte';
 	import TimelapsePanel from '$lib/components/admin/TimelapsePanel.svelte';
 	import CardGrantModal from '$lib/components/admin/CardGrantModal.svelte';
-	let { data } = $props();
+	import { onMount } from 'svelte';
 
+	let { data } = $props();
 	interface UserSummary {
 		id: string;
 		hcaSub: string;
@@ -39,6 +40,10 @@
 	const isReviewer = $derived(data.role === 'Reviewer' || data.role === 'Fraud Reviewer');
 	const isSuperAdmin = $derived(data.role === 'Super Admin');
 	const canBan = $derived(data.role === 'Super Admin' || data.role === 'Fraud Reviewer');
+	let justificationEl = $state<HTMLTextAreaElement | null>(null);
+	let userFeedbackEl = $state<HTMLTextAreaElement | null>(null);
+	let persistentUserNoteEl = $state<HTMLTextAreaElement | null>(null);
+	let internalNoteEl = $state<HTMLTextAreaElement | null>(null);
 	let activeTab = $state('users');
 	let users: UserSummary[] = $state([]);
 	let loading = $state(true);
@@ -89,6 +94,18 @@
 		if (!value) return null;
 		const date = new Date(value);
 		return Number.isNaN(date.getTime()) ? null : date.toISOString();
+	}
+
+	function isTypingTarget(target: EventTarget | null): boolean {
+		if (!(target instanceof HTMLElement)) return false;
+		const tag = target.tagName.toLowerCase();
+		return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable;
+	}
+
+	function focusAndSelect(el: HTMLTextAreaElement | HTMLInputElement | null) {
+		if (!el) return;
+		el.focus();
+		el.select();
 	}
 
 	function toDateTimeLocalValue(value: string | null) {
@@ -444,6 +461,124 @@
 			);
 		}
 		return result;
+	});
+
+	function moveProject(delta: number) {
+		if (!expandedProjectId || filteredProjects.length === 0) return;
+
+		const currentIndex = filteredProjects.findIndex((p) => p.id === expandedProjectId);
+		if (currentIndex === -1) {
+			selectProject(filteredProjects[0].id);
+			return;
+		}
+
+		const next = filteredProjects[currentIndex + delta];
+		if (next) selectProject(next.id);
+	}
+
+	function openFirstProject() {
+		if (!expandedProjectId && filteredProjects[0]) {
+			selectProject(filteredProjects[0].id);
+		}
+	}
+
+	function onReviewShortcut(e: KeyboardEvent) {
+		if (isTypingTarget(e.target)) return;
+		if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+		const key = e.key.toLowerCase();
+
+		if (key === 'escape' && expandedProjectId) {
+			e.preventDefault();
+			selectProject(expandedProjectId);
+			return;
+		}
+
+		if (key === 'j' || e.key === 'ArrowDown') {
+			e.preventDefault();
+			expandedProjectId ? moveProject(1) : openFirstProject();
+			return;
+		}
+
+		if (key === 'k' || e.key === 'ArrowUp') {
+			e.preventDefault();
+			moveProject(-1);
+			return;
+		}
+
+		if (!expandedProjectId) return;
+
+		if (key === 'o') {
+			e.preventDefault();
+			focusAndSelect(justificationEl);
+			return;
+		}
+
+		if (key === 'f') {
+			e.preventDefault();
+			focusAndSelect(userFeedbackEl);
+			return;
+		}
+
+		if (key === 'n') {
+			e.preventDefault();
+			focusAndSelect(persistentUserNoteEl);
+			return;
+		}
+
+		if (key === 'i') {
+			e.preventDefault();
+			focusAndSelect(internalNoteEl);
+			return;
+		}
+
+		if (key === 'a') {
+			e.preventDefault();
+			if (!reviewSubmitting && justificationOk) reviewProject('approved');
+			return;
+		}
+
+		if (key === 'r') {
+			e.preventDefault();
+			if (!reviewSubmitting && userFeedback.trim()) reviewProject('changes_needed');
+			return;
+		}
+
+		if (key === 'b') {
+			e.preventDefault();
+			if (!reviewSubmitting && canBan && confirm('Ban this user and reject their project?')) {
+				reviewProject('ban');
+			}
+			return;
+		}
+
+		if (key === 'h') {
+			e.preventDefault();
+			showHackatimeFiles = !showHackatimeFiles;
+			return;
+		}
+
+		if (key === 'l') {
+			e.preventDefault();
+			lightMode = !lightMode;
+			return;
+		}
+
+		if (key === '1') {
+			e.preventDefault();
+			projScreenIdx = 0;
+			return;
+		}
+
+		if (key === '2') {
+			e.preventDefault();
+			projScreenIdx = 1;
+		}
+	}
+
+	onMount(() => {
+		window.addEventListener('keydown', onReviewShortcut);
+		return () => window.removeEventListener('keydown', onReviewShortcut);
 	});
 
 	const totalUsers = $derived(users.length);
@@ -2274,7 +2409,7 @@
 											{/if}
 											<label class="ht-justification-label">
 												Override Justification: <span class="ht-justification-counter" class:ok={justificationOk}>{justificationOk ? 'ok' : `add ${justificationCharsRemaining} more chars`}</span>
-												<textarea class="ht-justification" bind:value={overrideJustification} rows="6"></textarea>
+												<textarea bind:this={justificationEl} class="ht-justification" bind:value={overrideJustification} rows="6"></textarea>
 											</label>
 										</div>
 									{/if}
@@ -2312,21 +2447,21 @@
 									<div class="user-feedback-box">
 										<label class="user-feedback-label">
 											User Feedback:
-											<textarea class="user-feedback" bind:value={userFeedback} rows="4" placeholder="Feedback to send to the user about their project..."></textarea>
+											<textarea bind:this={userFeedbackEl} class="user-feedback" bind:value={userFeedback} rows="4" placeholder="Feedback to send to the user about their project..."></textarea>
 										</label>
 									</div>
 
 									<div class="user-feedback-box">
 										<label class="user-feedback-label">
 											User-Wide Reviewer Note:
-											<textarea class="user-feedback" bind:value={persistentUserNote} rows="4" placeholder="Persistent note shown to this builder across all of their projects..."></textarea>
+											<textarea bind:this={persistentUserNoteEl} class="user-feedback" bind:value={persistentUserNote} rows="4" placeholder="Persistent note shown to this builder across all of their projects..."></textarea>
 										</label>
 									</div>
 
 									<div class="user-feedback-box">
 										<label class="user-feedback-label">
 											Internal Note:
-											<textarea class="user-feedback" bind:value={internalNote} rows="3" placeholder="Private note for reviewers only — not visible to the user..."></textarea>
+											<textarea bind:this={internalNoteEl} class="user-feedback" bind:value={internalNote} rows="3" placeholder="Private note for reviewers only — not visible to the user..."></textarea>
 										</label>
 									</div>
 
