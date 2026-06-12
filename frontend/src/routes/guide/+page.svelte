@@ -329,7 +329,7 @@
         'Write a Steps to Reproduce section in the README. A stranger should be able to follow it end-to-end: sourcing parts from the BoM, assembling, flashing the firmware, and verifying it works.',
         'Include a complete Bill of Materials with quantities, exact part numbers where they matter, and approximate costs.',
         'Commit progress as frequently as possible. Many small commits are required so reviewers can see the build evolve, not appear in a single dump.',
-        'Record your build sessions with a timelapse tool. <a href="https://lapse.hackclub.com" target="_blank" rel="noopener">lapse.hackclub.com</a> and <a href="https://lookout.hackclub.com" target="_blank" rel="noopener">lookout.hackclub.com</a> are both built for this and link straight into your submission.',
+        'Record your build sessions with a timelapse tool. <a href="https://lapse.hackclub.com" target="_blank" rel="noopener">lapse.hackclub.com</a> is built for this and links straight into your submission.',
         'Keep a devlog with an entry roughly every hour of work.',
         'Take photos of the assembled build and of it actually working (LED on, motor spinning, sensor reading on a screen).',
         'Record a short demo video and link it as Demo URL.',
@@ -337,7 +337,7 @@
       ],
       tips: [
         'A complete Bill of Materials is non-negotiable. It is how reviewers verify you understand what you built and what it costs to reproduce.',
-        'Hours count for soldering, debugging firmware, and PCB layout. Log all of it with <a href="https://lapse.hackclub.com" target="_blank" rel="noopener">lapse.hackclub.com</a> or <a href="https://lookout.hackclub.com" target="_blank" rel="noopener">lookout.hackclub.com</a>.'
+        'Hours count for soldering, debugging firmware, and PCB layout. Log all of it with <a href="https://lapse.hackclub.com" target="_blank" rel="noopener">lapse.hackclub.com</a>.'
       ]
     },
     {
