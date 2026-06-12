@@ -85,6 +85,8 @@
 		trustLevel: string | null;
 		emailMismatch: boolean;
 		totalHours: number | null;
+		unifiedDuplicate: boolean;
+		unifiedError: boolean;
 	};
 
 	let queue = $state<QueueItem[]>([]);
@@ -281,7 +283,9 @@
 			trust = {
 				trustLevel: j?.trustLevel ?? null,
 				emailMismatch: !!j?.emailMismatch,
-				totalHours: typeof j?.totalHours === 'number' ? j.totalHours : null
+				totalHours: typeof j?.totalHours === 'number' ? j.totalHours : null,
+				unifiedDuplicate: !!j?.unifiedDuplicate,
+				unifiedError: !!j?.unifiedError
 			};
 		} catch {
 			// Silent — trust panel just won't render.
@@ -467,9 +471,9 @@
 						</dl>
 					</section>
 
-					{#if trust && (trust.trustLevel === 'red' || trust.trustLevel === 'yellow' || trust.emailMismatch)}
+					{#if trust && (trust.trustLevel === 'red' || trust.trustLevel === 'yellow' || trust.emailMismatch || trust.unifiedDuplicate || trust.unifiedError)}
 						<section class="sec sec-trust">
-							<h3>Hackatime warnings</h3>
+							<h3>Warnings</h3>
 							{#if trust.trustLevel === 'red'}
 								<div class="anom-row"><span class="dot red"></span> <strong>Hackatime trust: RED</strong> — Hackatime has flagged this user as untrusted.</div>
 							{:else if trust.trustLevel === 'yellow'}
@@ -477,6 +481,11 @@
 							{/if}
 							{#if trust.emailMismatch}
 								<div class="anom-row"><span class="dot red"></span> <strong>Account mismatch</strong> — the linked Hackatime account's email doesn't include this builder's email. Likely a shared/alt account.</div>
+							{/if}
+							{#if trust.unifiedDuplicate}
+								<div class="anom-row"><span class="dot red"></span> <strong>Unified duplicate</strong> — this code URL already exists in Unified Approved Projects.</div>
+							{:else if trust.unifiedError}
+								<div class="anom-row"><span class="dot yellow"></span> <strong>Unified check failed</strong> — could not verify the code URL against Approved Projects.</div>
 							{/if}
 						</section>
 					{:else if trustLoading}
