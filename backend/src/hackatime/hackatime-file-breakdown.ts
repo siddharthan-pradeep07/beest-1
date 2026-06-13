@@ -42,6 +42,10 @@ function normalizeEpochSeconds(value: number | string | null | undefined): numbe
   return parsed > 1e12 ? Math.floor(parsed / 1000) : Math.floor(parsed);
 }
 
+function normalizeProjectName(value: string | null | undefined): string {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
 async function fetchSpans(opts: {
   baseUrl: string;
   adminKey: string;
@@ -235,7 +239,19 @@ export async function getFileHoursForProject(opts: {
     return [];
   }
 
-  const fileHours = toFileHoursFromHeartbeats(heartbeats);
+  const targetProject = normalizeProjectName(opts.projectName);
+  const scopedHeartbeats = heartbeats.filter((row) => {
+    const rowProject = normalizeProjectName(row.project);
+    return !rowProject || rowProject === targetProject;
+  });
+
+  if (scopedHeartbeats.length !== heartbeats.length) {
+    opts.debugLog?.(
+      `[Hackatime file breakdown] project="${opts.projectName}" filtered ${heartbeats.length - scopedHeartbeats.length} fallback heartbeats from other projects`,
+    );
+  }
+
+  const fileHours = toFileHoursFromHeartbeats(scopedHeartbeats);
   if (fileHours.length === 0) {
     opts.debugLog?.(
       `[Hackatime file breakdown] project="${opts.projectName}" fallback heartbeats had no file-level rows`,

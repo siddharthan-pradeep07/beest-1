@@ -50,6 +50,7 @@
 	let showPermsDropdown = $state(false);
 	let actionLoading = $state('');
 	let lightMode = $state(false);
+	let showHackatimeFiles = $state(false);
 
 	// News state
 	let newsItems: NewsItem[] = $state([]);
@@ -96,6 +97,28 @@
 		if (Number.isNaN(date.getTime())) return '';
 		const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
 		return offsetDate.toISOString().slice(0, 16);
+	}
+
+	function shortenHackatimePath(path: string): string {
+		if (!path) return path;
+
+		const normalized = path.replace(/\\/g, '/');
+		const parts = normalized.split('/').filter(Boolean);
+		const projectFolderNames = ['beest', 'frontend', 'backend'];
+
+		const rootIndex = parts.findIndex((part) =>
+			projectFolderNames.includes(part.toLowerCase()),
+		);
+
+		if (rootIndex >= 0) {
+			return parts.slice(rootIndex).join('/');
+		}
+
+		if (parts.length <= 4) {
+			return parts.join('/');
+		}
+
+		return parts.slice(-4).join('/');
 	}
 
 	// Projects state
@@ -177,7 +200,14 @@
 		Math.max(0, JUSTIFICATION_MIN - overrideJustification.trim().length),
 	);
 
-	let selectedProject = $derived(allProjects.find(p => p.id === expandedProjectId) ?? null);
+	let selectedProject = $derived(allProjects.find((p) => p.id === expandedProjectId) ?? null);
+	let otherProjectsForUser = $derived(
+		selectedProject
+			? allProjects
+					.filter((p) => p.user.id === selectedProject.user.id && p.id !== selectedProject.id)
+					.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+			: [],
+	);
 	let projScreenIdx = $state(0);
 
 	interface ReviewRecord {
@@ -354,6 +384,7 @@
 		overrideJustification = '';
 		lastAutoJustification = '';
 		hideReviewerName = false;
+		showHackatimeFiles = false;
 		pastReviews = [];
 		projectDevlogs = [];
 
@@ -2067,6 +2098,56 @@
 									</div>
 								{/if}
 
+								{#if otherProjectsForUser.length > 0}
+									<section class="review-user-projects" aria-label="Other projects by this user">
+										<div class="review-user-projects-head">
+											<span>Other projects by this user</span>
+											<span class="review-user-projects-count">{otherProjectsForUser.length}</span>
+										</div>
+
+										<div class="review-user-projects-list">
+											{#each otherProjectsForUser as p (p.id)}
+												<button 
+													type="button"
+													class="review-user-projects-row review-user-projects-link"
+													onclick={async() => {
+														if (expandedProjectId === p.id) return;
+														projScreenIdx = 0;
+														hackatimeData = null;
+														pastReviews = [];
+														projectDevlogs = [];
+														await Promise.all([
+															selectProject(p.id),
+															loadReviews(p.id),
+															loadProjectDevlogs(p.id)
+														]);
+													}}
+													>
+													<div class="review-user-projects-main">
+														<div class="review-user-projects-name">{p.name}</div>
+														<div class="review-user-projects-meta">
+															{p.projectType} · updated {formatDate(p.updatedAt)}
+														</div>
+													</div>
+
+													<span class="badge badge-{p.status} review-user-projects-status">
+														{p.status.replaceAll('_', ' ')}
+													</span>
+												</button>
+											{/each}
+										</div>
+
+									</section>
+								{:else}
+									<section class="review-user-projects" aria-label="Other projects by this user">
+										<div class="review-user-projects-head">
+											<span>Other projects by this user</span>
+											<span class="review-user-projects-count">0</span>
+										</div>
+										<div class="review-user-projects-empty">No other projects for this user.</div>
+									</section>
+								{/if}
+
 								<TimelapsePanel projectId={selectedProject.id} />
 
 								{#if selectedProject.status === 'unreviewed' || selectedProject.status === 'approved'}
@@ -2100,22 +2181,34 @@
 												/>
 											</div>
 
-											{#if hackatimeData.fileBreakdown?.length}
 											<div class="ht-files">
-												<div class="ht-files-heading">Hours by file</div>
-												{#each hackatimeData.fileBreakdown as row}
-													<div class="ht-file-row">
-														<span class="ht-file-name">{row.file}</span>
-														<span class="ht-file-hours">{row.hours}h</span>
-													</div>
-												{/each}
+												<div class="ht-files-head">
+													<div class="ht-files-heading">Hours by file</div>
+													<button
+														type="button"
+														class="ht-files-toggle"
+														onclick={() => (showHackatimeFiles = !showHackatimeFiles)}
+														aria-expanded={showHackatimeFiles}
+													>
+														{showHackatimeFiles ? 'Hide' : 'Show'}
+													</button>
+												</div>
+
+												{#if showHackatimeFiles}
+													{#if hackatimeData.fileBreakdown?.length}
+														<div class="ht-files-list">
+															{#each hackatimeData.fileBreakdown as row}
+																<div class="ht-file-row">
+																	<span class="ht-file-name" title={row.file}>{shortenHackatimePath(row.file)}</span>
+																	<span class="ht-file-hours">{row.hours}h</span>
+																</div>
+															{/each}
+														</div>
+													{:else}
+														<div class="ht-files-empty-text">No file-level breakdown available from Hackatime.</div>
+													{/if}
+												{/if}
 											</div>
-											{:else}
-											<div class="ht-files ht-files-empty">
-												<div class="ht-files-heading">Hours by file</div>
-												<div class="ht-files-empty-text">No file-level breakdown available from Hackatime.</div>
-											</div>
-											{/if}
 											
 											{#if hackatimeData.linkedBanned || hackatimeData.emailMismatch || hackatimeData.trustLevel === 'red'}
 												<div class="ht-ownership-alert">
@@ -3365,9 +3458,34 @@
 	}
 
 	.review-anonymous-toggle input {
-		width: 0.95rem;
-		height: 0.95rem;
-		accent-color: #5b9bd5;
+		appearance: none;
+		-webkit-appearance: none;
+		width: 1rem;
+		height: 1rem;
+		min-width: 1rem;
+		border: 2px solid rgba(230, 244, 254, 0.35);
+		border-radius: 3px;
+		background: rgba(0, 0, 0, 0.22);
+		cursor: pointer;
+		position: relative;
+		flex-shrink: 0;
+	}
+
+	.review-anonymous-toggle input:checked {
+		background: #5b9bd5;
+		border-color: #5b9bd5;
+	}
+
+	.review-anonymous-toggle input:checked::after {
+		content: '';
+		position: absolute;
+		left: 0.26rem;
+		top: 0.02rem;
+		width: 0.24rem;
+		height: 0.5rem;
+		border: solid #fff;
+		border-width: 0 2px 2px 0;
+		transform: rotate(45deg);
 	}
 
 	.user-feedback {
@@ -4155,6 +4273,37 @@
 		cursor: pointer;
 	}
 
+	.shop-checkbox input[type="checkbox"] {
+		appearance: none;
+		-webkit-appearance: none;
+		width: 1rem;
+		height: 1rem;
+		min-width: 1rem;
+		border: 2px solid rgba(230, 244, 254, 0.35);
+		border-radius: 3px;
+		background: rgba(0, 0, 0, 0.22);
+		cursor: pointer;
+		position: relative;
+		flex-shrink: 0;
+	}
+
+	.shop-checkbox input[type="checkbox"]:checked {
+		background: #5b9bd5;
+		border-color: #5b9bd5;
+	}
+
+	.shop-checkbox input[type="checkbox"]:checked::after {
+		content: '';
+		position: absolute;
+		left: 0.26rem;
+		top: 0.02rem;
+		width: 0.24rem;
+		height: 0.5rem;
+		border: solid #fff;
+		border-width: 0 2px 2px 0;
+		transform: rotate(45deg);
+	}
+
 	.btn-add-shop {
 		margin-left: auto;
 		background: #5b9bd5;
@@ -4522,6 +4671,10 @@
 	}
 	.admin-shell.light .review-card-date { color: #777; }
 	.admin-shell.light .review-anonymous-toggle { color: #333; }
+	.admin-shell.light .review-anonymous-toggle input {
+		border-color: rgba(60, 60, 60, 0.4);
+		background: rgba(0, 0, 0, 0.03);
+	}
 	.admin-shell.light .review-card-label { color: #666; }
 	.admin-shell.light .review-card-text { color: #333; }
 	.admin-shell.light .review-card-internal { background: rgba(180, 140, 50, 0.08); }
@@ -4536,6 +4689,10 @@
 	.admin-shell.light .shop-input { background: #f5f4f1; border-color: #555; color: #1a1a1a; }
 	.admin-shell.light .shop-input:focus { border-color: #3b7bb5; }
 	.admin-shell.light .shop-checkbox { color: #333; }
+	.admin-shell.light .shop-checkbox input[type="checkbox"] {
+		border-color: rgba(60, 60, 60, 0.4);
+		background: rgba(0, 0, 0, 0.03);
+	}
 	.admin-shell.light .btn-add-shop { background: #3b7bb5; color: #fff; }
 	.admin-shell.light .shop-item-row { background: #fff; border-color: #666; }
 	.admin-shell.light .shop-item-row.drag-over { border-top-color: #3b7bb5; }
@@ -4769,13 +4926,36 @@
 		background: rgba(0, 0, 0, 0.14);
 	}
 
+	.ht-files-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+	}
+
 	.ht-files-heading {
-		margin-bottom: 0.65rem;
 		font-size: 0.82rem;
 		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
 		color: #93b4cd;
+	}
+
+	.ht-files-toggle {
+		border: 1px solid rgba(147, 180, 205, 0.35);
+		background: rgba(147, 180, 205, 0.08);
+		color: #93b4cd;
+		padding: 0.28rem 0.65rem;
+		border-radius: 6px;
+		font: inherit;
+		font-size: 0.78rem;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		cursor: pointer;
+	}
+
+	.ht-files-toggle:hover {
+		background: rgba(147, 180, 205, 0.16);
 	}
 
 	.ht-file-row {
@@ -4802,7 +4982,12 @@
 		color: #93b4cd;
 	}
 
+	.ht-files-list {
+		margin-top: 0.75rem;
+	}
+
 	.ht-files-empty-text {
+		margin-top: 0.75rem;
 		color: rgba(255, 255, 255, 0.65);
 		font-size: 0.9rem;
 	}
@@ -4810,6 +4995,16 @@
 	.admin-shell.light .ht-files {
 		border-color: rgba(0, 0, 0, 0.12);
 		background: rgba(0, 0, 0, 0.03);
+	}
+
+	.admin-shell.light .ht-files-toggle {
+		border-color: rgba(42, 102, 153, 0.28);
+		background: rgba(42, 102, 153, 0.08);
+		color: #2a6699;
+	}
+
+	.admin-shell.light .ht-files-toggle:hover {
+		background: rgba(42, 102, 153, 0.14);
 	}
 
 	.admin-shell.light .ht-file-row {
@@ -4822,5 +5017,115 @@
 
 	.admin-shell.light .ht-files-empty-text {
 		color: rgba(0, 0, 0, 0.62);
+	}
+
+	.review-user-projects{
+		margin-top: 1rem;
+		padding: 0.9rem 1rem;
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		border-radius: 8px;
+		background: rgba(0, 0, 0, 0.14);
+	}
+
+	.review-user-projects-head {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 1rem;
+		margin-bottom: 0.65rem;
+		font-size: 0.82rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: #93b4cd;
+	}
+
+	.review-user-projects-count {
+		font-variant-numeric: tabular-nums;
+	}
+
+	.review-user-projects-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0;
+	}
+
+	.review-user-projects-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 1rem;
+		padding: 0.45rem 0;
+		border-top: 1px solid rgba(255, 255, 255, 0.06);
+	}
+
+	.review-user-projects-row:first-of-type {
+		border-top: none;
+	}
+
+	.review-user-projects-name {
+		color: rgba(255, 255, 255, 0.92);
+		font-size: 0.9rem;
+		font-weight: 600;
+	}
+
+	.review-user-projects-meta {
+		margin-top: 0.15rem;
+		font-size: 0.82rem;
+		color: rgba(255, 255, 255, 0.62);
+	}
+
+	.review-user-projects-status {
+		flex: none;
+		align-self: center;
+		font-size: 0.75rem;
+		font-variant-numeric: tabular-nums;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.review-user-projects-empty {
+		color: rgba(255, 255, 255, 0.65);
+		font-size: 0.9rem;
+	}
+
+	.admin-shell.light .review-user-projects {
+		border-color: rgba(0, 0, 0, 0.12);
+		background: rgba(0, 0, 0, 0.03);
+	}
+
+	.admin-shell.light .review-user-projects-row {
+		border-top-color: rgba(0, 0, 0, 0.08);
+	}
+
+	.admin-shell.light .review-user-projects-name {
+		color: #1a1a1a;
+	}
+
+	.admin-shell.light .review-user-projects-meta,
+	.admin-shell.light .review-user-projects-empty {
+		color: rgba(0, 0, 0, 0.62);
+	}
+
+	.review-user-projects-link {
+		width: 100%;
+		border: none;
+		text-align: left;
+		cursor: pointer;
+		background: transparent;
+		font: inherit;
+	}
+
+	.review-user-projects-link:hover {
+		background: rgba(147, 180, 205, 0.08);
+	}
+	
+	.review-user-projects-link:focus-visible{
+		outline: 2px solid #93b4cd;
+		outline-offset: 2px;
+	}
+
+	.admin-shell.light .review-user-projects-link:hover {
+		background: rgba(147, 180, 205, 0.12);
 	}
 </style>
