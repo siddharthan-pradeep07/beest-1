@@ -1973,7 +1973,7 @@
           </label>
           <label class="review-check">
             <input type="checkbox" bind:checked={checkStartedOrUpdated} />
-            <span>I started this project later than August 2nd, 2026, or shipped a significant update to an old project</span>
+            <span>I started this project later than April 2nd, 2026, or shipped a significant update to an old project</span>
           </label>
         </div>
 
