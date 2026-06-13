@@ -415,7 +415,7 @@
 <div class="rock-strata" style="background:#786e5c" aria-hidden="true">
   <svg viewBox="0 0 1440 120" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
     <polygon points="0,40 140,25 300,55 440,20 580,50 720,15 860,48 1000,28 1140,58 1280,22 1440,45 1440,120 0,120" fill="#5e5648" />
-    <polygon points="0,65 160,50 320,78 460,45 600,72 760,48 900,80 1040,52 1180,82 1320,55 1440,70 1440,120 0,120" fill="#56494a" />
+    <polygon points="0,65 160,50 320,78 460,45 600,72 760,48 900,80 1040,52 1180,82 1320,55 1440,70 1440,120 0,120" fill="#635a4e" />
   </svg>
 </div>
 
@@ -449,10 +449,10 @@
   </div>
 </section>
 
-<div class="rock-strata" style="background:#56494a" aria-hidden="true">
+<div class="rock-strata" style="background:#635a4e" aria-hidden="true">
   <svg viewBox="0 0 1440 120" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-    <polygon points="0,35 160,55 320,28 480,60 640,20 800,52 960,30 1120,58 1280,22 1440,45 1440,120 0,120" fill="#635a4e" />
-    <polygon points="0,58 200,72 360,50 520,78 680,44 840,74 1000,48 1160,70 1320,52 1440,65 1440,120 0,120" fill="#4b4840" />
+    <polygon points="0,35 160,55 320,28 480,60 640,20 800,52 960,30 1120,58 1280,22 1440,45 1440,120 0,120" fill="#544d42" />
+    <polygon points="0,58 200,72 360,50 520,78 680,44 840,74 1000,48 1160,70 1320,52 1440,65 1440,120 0,120" fill="#56494a" />
   </svg>
 </div>
 
@@ -983,8 +983,8 @@
     display: flex;
     align-items: stretch;
     justify-content: center;
-    gap: 48px;
-    padding: 240px 48px 64px;
+    gap: 64px;
+    padding: 240px 72px 96px;
     max-width: 1400px;
     margin: 0 auto;
   }
@@ -1042,7 +1042,7 @@
   }
 
   .cta-content {
-    flex: 1;
+    flex: 0 1 auto;
     min-width: 0;
   }
 
@@ -1725,7 +1725,7 @@
 
     .sticker-cta {
       gap: 32px;
-      padding: 160px 24px 60px;
+      padding: 160px 40px 80px;
     }
 
     .hero-overlay {
@@ -1742,8 +1742,8 @@
     }
 
     .cta-sticker {
-      width: min(60vw, 260px);
-      height: min(60vw, 260px);
+      width: min(42vw, 220px);
+      height: min(42vw, 220px);
     }
 
     .sticker-row {
@@ -1759,11 +1759,16 @@
 
     .cta-group {
       box-sizing: border-box;
-      padding: 28px 32px;
+      padding: 24px 28px;
+      max-width: 600px;
+    }
+
+    .cta-line {
+      font-size: clamp(22px, 2.6vw, 40px);
     }
 
     .rsvp-box {
-      flex: 0 0 340px;
+      flex: 0 0 360px;
     }
 
     .info-section {
@@ -1807,11 +1812,11 @@
     }
   }
 
-  @media (max-width: 1050px) {
+  @media (max-width: 900px) {
     .sticker-cta {
       flex-direction: column;
       align-items: center;
-      padding: 100px 20px 60px;
+      padding: 100px 24px 72px;
     }
 
     .cta-group {

@@ -109,38 +109,46 @@ export async function getAuthenticatedUser(
 	const token = cookies.get('auth_token');
 	const refreshToken = cookies.get('refresh_token');
 
-	// 1. Try the JWT
-	if (token) {
-		const res = await fetch(`${BACKEND_URL}/api/auth/me`, {
-			headers: { Authorization: `Bearer ${token}` }
-		});
-		if (res.ok) return res.json();
-	}
-
-	// 2. JWT expired or missing — try refresh
-	if (refreshToken) {
-		const res = await fetch(`${BACKEND_URL}/api/auth/refresh`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ refreshToken })
-		});
-
-		if (res.ok) {
-			const data = await res.json();
-
-			// Set the rotated tokens
-			cookies.set('auth_token', data.token, { ...COOKIE_OPTS, maxAge: AUTH_TOKEN_MAX_AGE });
-			cookies.set('refresh_token', data.refreshToken, {
-				...COOKIE_OPTS,
-				maxAge: 90 * 24 * 60 * 60
+	try {
+		// 1. Try the JWT
+		if (token) {
+			const res = await fetch(`${BACKEND_URL}/api/auth/me`, {
+				headers: { Authorization: `Bearer ${token}` }
 			});
-
-			// Fetch user claims with the new JWT
-			const meRes = await fetch(`${BACKEND_URL}/api/auth/me`, {
-				headers: { Authorization: `Bearer ${data.token}` }
-			});
-			if (meRes.ok) return meRes.json();
+			if (res.ok) return res.json();
 		}
+
+		// 2. JWT expired or missing — try refresh
+		if (refreshToken) {
+			const res = await fetch(`${BACKEND_URL}/api/auth/refresh`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ refreshToken })
+			});
+
+			if (res.ok) {
+				const data = await res.json();
+
+				// Set the rotated tokens
+				cookies.set('auth_token', data.token, { ...COOKIE_OPTS, maxAge: AUTH_TOKEN_MAX_AGE });
+				cookies.set('refresh_token', data.refreshToken, {
+					...COOKIE_OPTS,
+					maxAge: 90 * 24 * 60 * 60
+				});
+
+				// Fetch user claims with the new JWT
+				const meRes = await fetch(`${BACKEND_URL}/api/auth/me`, {
+					headers: { Authorization: `Bearer ${data.token}` }
+				});
+				if (meRes.ok) return meRes.json();
+			}
+		}
+	} catch {
+		// Backend unreachable (e.g. ECONNREFUSED in local dev, or an outage).
+		// Treat this request as unauthenticated but keep the cookies so the
+		// session resumes once the backend is back — rather than throwing and
+		// turning every page that calls this into a 500.
+		return null;
 	}
 
 	// 3. Both expired — clean up
