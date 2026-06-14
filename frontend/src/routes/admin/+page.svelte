@@ -209,6 +209,76 @@
 	let customHours = $state(0);
 	let userFacingHours = $state(0);
 
+	type QuickRejectReason = {
+		id: string;
+		label: string;
+		userFeedback: string;
+		internalNote?: string;
+	};
+
+	const QUICK_REJECT_REASONS: QuickRejectReason[] = [
+		{
+			id: 'not_enough_work',
+			label: 'Not enough work',
+			userFeedback:
+				'This does not look like enough new work for a ship yet. Please build it out more, then resubmit with a clearer description of what changed.',
+			internalNote: 'Quick reject: not enough visible/new work.'
+		},
+		{
+			id: 'broken_or_unusable',
+			label: 'Broken / unusable',
+			userFeedback:
+				'I could not meaningfully test the project because it appears broken, incomplete, or unusable. Please fix the main flow and resubmit.',
+			internalNote: 'Quick reject: project could not be meaningfully tested.'
+		},
+		{
+			id: 'missing_demo',
+			label: 'No demo / hard to test',
+			userFeedback:
+				'I could not tell how to run or try the project. Please add a working demo, clearer setup instructions, or screenshots that show the project functioning.',
+			internalNote: 'Quick reject: insufficient demo/testability.'
+		},
+		{
+			id: 'low_effort',
+			label: 'Low effort',
+			userFeedback:
+				'This feels too small or low-effort for approval right now. Please add more original functionality, polish, or depth before resubmitting.',
+			internalNote: 'Quick reject: low-effort submission.'
+		},
+		{
+			id: 'mostly_template',
+			label: 'Template / tutorial',
+			userFeedback:
+				'This appears to be mostly a template, tutorial, starter project, or lightly modified existing code. Please add substantial original work before resubmitting.',
+			internalNote: 'Quick reject: mostly template/tutorial/starter code.'
+		},
+		{
+			id: 'ai_generated',
+			label: 'Mostly AI-generated',
+			userFeedback:
+				'This appears to rely too heavily on AI-generated code or content without enough original work and breaks the 30% AI Rule. Please make meaningful changes yourself and explain what you built.',
+			internalNote: 'Quick reject: likely excessive AI-generated work.'
+		},
+		{
+			id: 'duplicate',
+			label: 'Duplicate / already shipped',
+			userFeedback:
+				'This looks too similar to a previous submission or already-approved project. Please only resubmit when there is significant new work to review.',
+			internalNote: 'Quick reject: duplicate or insufficiently changed resubmission.'
+		},
+		{
+			id: 'wrong_program',
+			label: 'Not eligible',
+			userFeedback:
+				'This project does not appear to fit the eligible project criteria for Beest. Please check the guidelines and resubmit something that matches the requirements.',
+			internalNote: 'Quick reject: eligibility concern.'
+		}
+	];
+
+	let selectedQuickRejectReason = $state('');
+	let lastQuickRejectUserFeedback = $state('');
+	let lastQuickRejectInternalNote = $state('');
+
 	// Reviewer must add their own reasoning beyond the auto-generated template
 	// (~180 chars) before approving or rejecting. Server enforces the same floor.
 	const JUSTIFICATION_MIN = 250;
@@ -347,6 +417,12 @@
 		lastAutoJustification = next;
 	}
 
+	function selectQuickRejectReason(reasonId: string) {
+		selectedQuickRejectReason = reasonId;
+		const reason = QUICK_REJECT_REASONS.find((r) => r.id === reasonId);
+		if (reason) applyQuickReject(reason);
+	}
+
 	function adjustHours(factor: number) {
 		if (!hackatimeData) return;
 		// Reviewer is approving the DELTA (new hours since last approval) on a
@@ -358,6 +434,58 @@
 		customHours = adjusted;
 		const label = factor === 0.5 ? 'halved' : factor === 1/3 ? 'reduced to a third' : `reduced to ${Math.round(factor * 100)}%`;
 		buildJustification(adjusted, label);
+	}
+
+	function replaceQuickRejectText(
+		current: string,
+		previousPreset: string,
+		nextPreset: string,
+		allPresets: string[],
+	): string {
+		const cleanCurrent = current.trim();
+		const cleanNext = nextPreset.trim();
+		const cleanPrevious = previousPreset.trim();
+
+		if (!cleanCurrent) return cleanNext;
+		if (cleanCurrent.includes(cleanNext)) return cleanCurrent;
+
+		const presetToReplace =
+			cleanPrevious && cleanCurrent.includes(cleanPrevious)
+				? cleanPrevious
+				: allPresets.find((preset) => preset.trim() && cleanCurrent.includes(preset.trim()))?.trim();
+
+		if (presetToReplace) {
+			return cleanCurrent
+				.replace(presetToReplace, cleanNext)
+				.replace(/\n{3,}/g, '\n\n')
+				.trim();
+		}
+
+		return `${cleanNext}\n\n${cleanCurrent}`;
+	}
+
+	function applyQuickReject(reason: QuickRejectReason) {
+		const userFeedbackPresets = QUICK_REJECT_REASONS.map((r) => r.userFeedback);
+		const internalNotePresets = QUICK_REJECT_REASONS.map((r) => r.internalNote).filter((note): note is string => !!note);
+
+		selectedQuickRejectReason = reason.id;
+		userFeedback = replaceQuickRejectText(
+			userFeedback,
+			lastQuickRejectUserFeedback,
+			reason.userFeedback,
+			userFeedbackPresets,
+		);
+		if (reason.internalNote) {
+			internalNote = replaceQuickRejectText(
+				internalNote,
+				lastQuickRejectInternalNote,
+				reason.internalNote,
+				internalNotePresets,
+			);
+		}
+		lastQuickRejectUserFeedback = reason.userFeedback;
+		lastQuickRejectInternalNote = reason.internalNote ?? '';
+		queueMicrotask(() => userFeedbackEl?.focus());
 	}
 
 	function applyCustomHours() {
@@ -389,6 +517,9 @@
 			userFeedback = '';
 			internalNote = '';
 			persistentUserNote = '';
+			selectedQuickRejectReason = '';
+			lastQuickRejectUserFeedback = '';
+			lastQuickRejectInternalNote = '';
 			hideReviewerName = false;
 			projectDevlogs = [];
 			return;
@@ -398,6 +529,9 @@
 		hackatimeData = null;
 		userFeedback = '';
 		internalNote = '';
+		selectedQuickRejectReason = '';
+		lastQuickRejectUserFeedback = '';
+		lastQuickRejectInternalNote = '';
 		overrideJustification = '';
 		lastAutoJustification = '';
 		hideReviewerName = false;
@@ -2444,6 +2578,26 @@
 
 									<hr class="proj-divider" />
 
+									<div class="quick-reject-panel">
+										<div class="quick-reject-head">
+											<span class="quick-reject-title">Quick rejection reasons</span>
+											<span class="quick-reject-hint">Adds feedback; edit before rejecting if needed.</span>
+										</div>
+
+										<div class="quick-reject-select-row">
+											<select
+												class="quick-reject-select"
+												value={selectedQuickRejectReason}
+												onchange={(e) => selectQuickRejectReason(e.currentTarget.value)}
+											>
+												<option value="">Choose a rejection reason</option>
+												{#each QUICK_REJECT_REASONS as reason}
+													<option value={reason.id}>{reason.label}</option>
+												{/each}
+											</select>
+										</div>
+									</div>
+
 									<div class="user-feedback-box">
 										<label class="user-feedback-label">
 											User Feedback:
@@ -3574,6 +3728,64 @@
 		margin-top: 0.25rem;
 	}
 
+	.quick-reject-select-row {
+		display: flex;
+	}
+
+	.quick-reject-select {
+		width: 100%;
+		border: 1px solid rgba(255, 255, 255, 0.18);
+		background: rgba(255, 255, 255, 0.06);
+		color: #e0e0e0;
+		border-radius: 8px;
+		padding: 0.55rem 0.7rem;
+		font: inherit;
+		font-size: 0.86rem;
+		cursor: pointer;
+	}
+
+	.quick-reject-select:focus {
+		outline: none;
+		border-color: rgba(255, 180, 180, 0.55);
+		background: rgba(255, 255, 255, 0.09);
+	}
+
+	.admin-shell.light .quick-reject-select {
+		background: white;
+		color: #333;
+		border-color: #e2c5c5;
+	}
+
+	.admin-shell.light .quick-reject-select:focus {
+		border-color: #c44747;
+		background: #fffafa;
+	}
+
+	.quick-reject-panel {
+		border: 1px solid rgba(184, 48, 48, 0.25);
+		background: rgba(184, 48, 48, 0.08);
+		border-radius: 8px;
+		padding: 0.85rem;
+		margin: 1rem 0;
+	}
+
+	.quick-reject-head {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 1rem;
+		margin-bottom: 0.65rem;
+	}
+
+	.quick-reject-title {
+		font-weight: 800;
+		color: #ffd6d6;
+	}
+
+	.quick-reject-hint {
+		font-size: 0.78rem;
+		color: #aaa;
+	}
 	.user-feedback-label {
 		display: flex;
 		flex-direction: column;
@@ -4780,6 +4992,18 @@
 	.admin-shell.light .user-feedback-label,
 	.admin-shell.light .ht-justification-label { color: #555; }
 
+	.admin-shell.light .quick-reject-panel {
+		background: #fff1f1;
+		border-color: #e7b3b3;
+	}
+
+	.admin-shell.light .quick-reject-title {
+		color: #8d2020;
+	}
+
+	.admin-shell.light .quick-reject-hint {
+		color: #666;
+	}
 	/* Hours adjust */
 	.admin-shell.light .hours-adjust-label { color: #555; }
 	.admin-shell.light .hours-btn { background: #e8e6e1; border-color: #555; color: #1a1a1a; }
