@@ -35,6 +35,7 @@
 
   let { data } = $props();
   const initialEvents = data.events ?? [];
+  const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024;
 
   function slackUserUrl(slackId: string) {
     return `https://hackclub.enterprise.slack.com/team/${encodeURIComponent(slackId)}`;
@@ -460,6 +461,11 @@
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
+    if (file.size > MAX_SCREENSHOT_BYTES) {
+      formError = 'Screenshot must be 5 MB or smaller';
+      input.value = '';
+      return;
+    }
     if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
       formError = 'Screenshot must be a PNG, JPEG, GIF, or WebP image';
       input.value = '';
@@ -7716,11 +7722,54 @@
   }
 
   .pref-toggle input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
-    accent-color: #93b4cd;
+    appearance: none;
+    -webkit-appearance: none;
+    width: 19px;
+    height: 19px;
+    min-width: 19px;
+    border: 2px solid rgba(203, 193, 174, 0.5);
+    border-radius: 3px;
+    background: rgba(80, 68, 55, 0.35);
+    flex-shrink: 0;
+    position: relative;
     cursor: pointer;
+    box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.08);
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
   }
+
+  .pref-toggle input[type="checkbox"]:hover {
+    border-color: rgba(235, 218, 187, 0.8);
+    background: rgba(98, 82, 64, 0.45);
+  }
+
+  .pref-toggle input[type="checkbox"]:focus-visible {
+    outline: 2px solid rgba(203, 193, 174, 0.75);
+    outline-offset: 2px;
+  }
+
+  .pref-toggle input[type="checkbox"]:checked {
+    background: #cbc1ae;
+    border-color: #e7d8ba;
+    box-shadow:
+      inset 1px 1px 0 rgba(255, 255, 255, 0.25),
+      0 0 0 1px rgba(58, 43, 31, 0.35);
+  }
+
+  .pref-toggle input[type="checkbox"]:checked::after {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 1px;
+    width: 5px;
+    height: 10px;
+    border: solid #3a2b1f;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+  }
+
 
   .pref-label-text {
     font-family: "Courier New", monospace;

@@ -18,6 +18,7 @@ import { UpdateProjectDto } from './update-project.dto';
 
 const CDN_UPLOAD_URL = 'https://cdn.hackclub.com/api/v4/upload';
 
+const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024;
 /** MIME → file extension mapping for uploaded screenshots. */
 const MIME_EXTENSIONS: Record<string, string> = {
   'image/png': 'png',
@@ -972,6 +973,12 @@ export class ProjectsService {
 
       // Decode to check real size and magic bytes
       const buffer = Buffer.from(b64Data, 'base64');
+
+      if (buffer.length > MAX_SCREENSHOT_BYTES) {
+        throw new BadRequestException(
+          `Screenshot ${i + 1} must be 5 MB or smaller`,
+        );
+      }
 
       // Verify magic bytes match declared MIME type
       const sig = IMAGE_SIGNATURES.find((s) => s.mime === declaredMime);
