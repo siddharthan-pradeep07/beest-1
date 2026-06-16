@@ -72,6 +72,37 @@ export class AdminController {
     return { success: true };
   }
 
+  // Watchlist / cool-builder are reviewer-facing notes, not perms changes — any
+  // reviewer can toggle them (ReviewerGuard), unlike ban/perms which are
+  // Super-Admin only.
+  @UseGuards(ReviewerGuard)
+  @Patch('users/:id/watchlist')
+  async setWatchlist(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { watchlisted?: boolean },
+    @Req() req: Request,
+  ) {
+    if (typeof body.watchlisted !== 'boolean') {
+      throw new BadRequestException('watchlisted (boolean) is required');
+    }
+    const adminId = (req as any).user?.uid;
+    return this.adminService.setReviewerMarker(id, 'watchlisted', body.watchlisted, adminId);
+  }
+
+  @UseGuards(ReviewerGuard)
+  @Patch('users/:id/cool-builder')
+  async setCoolBuilder(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { coolBuilder?: boolean },
+    @Req() req: Request,
+  ) {
+    if (typeof body.coolBuilder !== 'boolean') {
+      throw new BadRequestException('coolBuilder (boolean) is required');
+    }
+    const adminId = (req as any).user?.uid;
+    return this.adminService.setReviewerMarker(id, 'coolBuilder', body.coolBuilder, adminId);
+  }
+
   @UseGuards(SuperAdminGuard)
   @Patch('users/:id/pipes')
   async adjustPipes(
@@ -303,8 +334,9 @@ export class AdminController {
   /** Devlog entries authored by the project owner and linked to this project. */
   @UseGuards(ReviewerGuard)
   @Get('projects/:id/devlogs')
-  getProjectDevlogs(@Param('id', ParseUUIDPipe) id: string) {
-    return this.devlogsService.findByProject(id);
+  getProjectDevlogs(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    const isSuperAdmin = (req as any).user?.perms === 'Super Admin';
+    return this.devlogsService.findByProject(id, isSuperAdmin);
   }
 
   @UseGuards(ReviewerGuard)

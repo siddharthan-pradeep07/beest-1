@@ -86,7 +86,10 @@ export class DevlogsService {
     return rows.map((d) => this.toPublic(d));
   }
 
-  async findByProject(projectId: string) {
+  // `isSuperAdmin` defaults to false so this fails closed: non-Super-Admin
+  // reviewers never see the builder's legal name, only their nickname (or Slack
+  // ID as a fallback). Mirrors the redaction in AdminService.listAllProjects.
+  async findByProject(projectId: string, isSuperAdmin = false) {
     const rows = await this.devlogRepo.find({
       where: { projectId },
       order: { createdAt: 'ASC' },
@@ -96,7 +99,9 @@ export class DevlogsService {
       id: d.id,
       projectId: d.projectId,
       userId: d.userId,
-      userName: d.user?.name ?? null,
+      userName: isSuperAdmin
+        ? (d.user?.name ?? null)
+        : (d.user?.nickname ?? d.user?.slackId ?? null),
       title: d.title,
       text: d.text,
       imageUrls: d.imageUrls ?? [],

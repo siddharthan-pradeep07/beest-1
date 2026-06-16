@@ -112,15 +112,21 @@ export class AuthController {
     const user = (req as any).user;
     const hasAddress = !!user.has_address;
     const hasBirthdate = !!user.has_birthdate;
-    const identityVerified = await this.identityService.isVerified({
+    const identityStatus = await this.identityService.getStatus({
       slackId: user.slack_id,
       email: user.email,
     });
+    const identityVerified = identityStatus !== 'unverified';
+    const identityEligible = identityStatus === 'eligible';
     return {
       hasAddress,
       hasBirthdate,
       identityVerified,
-      eligible: hasAddress && hasBirthdate && identityVerified,
+      identityEligible,
+      identityStatus,
+      // Eligible to ship requires YSWS eligibility, not just a verified document:
+      // a verified_ineligible user can never ship for rewards.
+      eligible: hasAddress && hasBirthdate && identityEligible,
       addressPortalUrl: 'https://auth.hackclub.com/portal/address',
       identityPortalUrl: 'https://auth.hackclub.com/verifications/document',
     };

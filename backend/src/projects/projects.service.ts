@@ -824,22 +824,32 @@ export class ProjectsService {
    * Backend gate for shipping a project. Live call to identity.hackclub.com so a
    * freshly verified user can ship without logging out and back in.
    *
-   * Address/birthdate are intentionally NOT enforced here: an identity-verified
-   * user has a birthdate on file by construction, and missing addresses get
-   * caught at fulfillment. The frontend still surfaces the soft prompt for both.
+   * Gated on YSWS *eligibility*, not just a verified document: a
+   * `verified_ineligible` user (e.g. over the age limit / out of region) has a
+   * verified identity but cannot receive rewards, so they must not enter the
+   * review queue.
+   *
+   * Address/birthdate are intentionally NOT enforced here: an eligible user has
+   * a birthdate on file by construction, and missing addresses get caught at
+   * fulfillment. The frontend still surfaces the soft prompt for both.
    */
   private async requireShipEligibility(userId: string): Promise<void> {
     const user = await this.userRepo.findOne({
       where: { id: userId },
       select: ['email', 'slackId'],
     });
-    const verified = await this.identityService.isVerified({
+    const status = await this.identityService.getStatus({
       slackId: user?.slackId,
       email: user?.email,
     });
-    if (!verified) {
+    if (status === 'unverified') {
       throw new ForbiddenException(
         'Verify your identity at https://auth.hackclub.com/verifications/document before shipping a project.',
+      );
+    }
+    if (status === 'ineligible') {
+      throw new ForbiddenException(
+        'Your Hack Club identity is verified but not eligible for YSWS rewards (usually an age or region restriction), so this project cannot be shipped for review.',
       );
     }
   }

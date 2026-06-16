@@ -51,6 +51,9 @@
 			slackId: string | null;
 			email: string | null;
 			hackatimeConnected: boolean;
+			identityStatus: 'eligible' | 'ineligible' | 'unverified';
+			watchlisted: boolean;
+			coolBuilder: boolean;
 		} | null;
 		originalApproval: Approval;
 		isOneShot: boolean;
@@ -335,6 +338,41 @@
 		idx = next;
 	}
 
+	let markerBusy = $state(false);
+	let markerError = $state<string | null>(null);
+
+	async function toggleMarker(kind: 'watchlist' | 'cool') {
+		if (!current?.owner || markerBusy) return;
+		const owner = current.owner;
+		markerBusy = true;
+		markerError = null;
+		const endpoint = kind === 'watchlist' ? 'watchlist' : 'cool-builder';
+		const key = kind === 'watchlist' ? 'watchlisted' : 'coolBuilder';
+		const next = kind === 'watchlist' ? !owner.watchlisted : !owner.coolBuilder;
+		try {
+			const res = await fetch(`/api/admin/users/${owner.id}/${endpoint}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ [key]: next })
+			});
+			const j = await res.json().catch(() => ({}));
+			if (!res.ok) throw new Error(j.message || j.error || `HTTP ${res.status}`);
+			// Reflect the authoritative (mutually-exclusive) result across every
+			// queued project owned by this user.
+			for (const item of queue) {
+				if (item.owner?.id === owner.id) {
+					item.owner.watchlisted = !!j.watchlisted;
+					item.owner.coolBuilder = !!j.coolBuilder;
+				}
+			}
+			queue = queue;
+		} catch (e) {
+			markerError = e instanceof Error ? e.message : String(e);
+		} finally {
+			markerBusy = false;
+		}
+	}
+
 	async function submit() {
 		if (!current || submitting) return;
 		submitting = true;
@@ -460,8 +498,21 @@
 
 					<section class="sec">
 						<dl class="meta">
-							<dt>Owner</dt><dd>{current.owner?.nickname || current.owner?.name || '—'}{#if current.owner?.slackId} · <code>{current.owner.slackId}</code>{/if}</dd>
+							<dt>Owner</dt><dd>{current.owner?.nickname || current.owner?.name || '—'}{#if current.owner?.slackId} · <code>{current.owner.slackId}</code>{/if}{#if current.owner?.watchlisted} <span class="marker marker-watch">watchlisted</span>{:else if current.owner?.coolBuilder} <span class="marker marker-cool">cool builder</span>{/if}</dd>
+							{#if current.owner}
+								<dt>Flags</dt>
+								<dd class="marker-controls">
+									<button type="button" class="marker-btn" class:on={current.owner.watchlisted} disabled={markerBusy} onclick={() => toggleMarker('watchlist')}>
+										{current.owner.watchlisted ? '✓ Watchlisted' : 'Watchlist'}
+									</button>
+									<button type="button" class="marker-btn marker-btn-cool" class:on={current.owner.coolBuilder} disabled={markerBusy} onclick={() => toggleMarker('cool')}>
+										{current.owner.coolBuilder ? '✓ Cool builder' : 'Cool builder'}
+									</button>
+									{#if markerError}<span class="marker-err">{markerError}</span>{/if}
+								</dd>
+							{/if}
 							{#if current.owner?.email}<dt>Email</dt><dd>{current.owner.email}</dd>{/if}
+							<dt>Identity</dt><dd>{#if current.owner?.identityStatus === 'eligible'}verified &amp; eligible{:else if current.owner?.identityStatus === 'ineligible'}<strong class="idv-bad">verified — NOT eligible for YSWS</strong>{:else}<strong class="idv-bad">not verified</strong>{/if}</dd>
 							<dt>Hackatime</dt><dd>{current.owner?.hackatimeConnected ? 'linked' : 'not linked'}{#if current.hackatimeProjectNames.length} · {current.hackatimeProjectNames.join(', ')}{/if}</dd>
 							<dt>Approved hours (pending)</dt><dd>{current.overrideHours}h · {current.pipesGranted} pipes granted</dd>
 							{#if current.aiUse}<dt>AI use</dt><dd>{current.aiUse}</dd>{/if}
@@ -952,6 +1003,19 @@
 	.dot.green { background: var(--approve); }
 	.dot.yellow { background: var(--warn); }
 	.dot.red { background: var(--reject); }
+	.idv-bad { color: var(--reject); }
+
+	.marker { display: inline-block; padding: 0.05rem 0.4rem; border-radius: 999px; font-size: 0.72rem; font-weight: 700; vertical-align: middle; }
+	.marker-watch { background: var(--reject); color: #fff; }
+	.marker-cool { background: var(--approve); color: #fff; }
+	.marker-controls { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+	.marker-btn { padding: 0.2rem 0.55rem; border-radius: 6px; border: 1px solid var(--border, #999); background: transparent; color: var(--text); cursor: pointer; font-size: 0.8rem; }
+	.marker-btn:hover:not(:disabled) { border-color: var(--reject); }
+	.marker-btn.on { background: var(--reject); border-color: var(--reject); color: #fff; }
+	.marker-btn-cool:hover:not(:disabled) { border-color: var(--approve); }
+	.marker-btn-cool.on { background: var(--approve); border-color: var(--approve); color: #fff; }
+	.marker-btn:disabled { opacity: 0.5; cursor: default; }
+	.marker-err { color: var(--reject); font-size: 0.78rem; }
 
 	.seg { display: flex; gap: 0.3rem; }
 	.seg button {

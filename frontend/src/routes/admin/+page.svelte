@@ -156,7 +156,7 @@
 		aiUse: string | null;
 		createdAt: string;
 		updatedAt: string;
-		user: { id: string; name: string | null; slackId: string | null; reviewerUserNote: string | null };
+		user: { id: string; name: string | null; slackId: string | null; reviewerUserNote: string | null; watchlisted: boolean; coolBuilder: boolean };
 		latestSubmission: { id: string; changeDescription: string | null; minHoursConfirmed: boolean; reviewerNote: string | null; status: string; createdAt: string } | null;
 	}
 
@@ -364,6 +364,39 @@
 			}
 		} finally {
 			reviewSubmitting = false;
+		}
+	}
+
+	let markerBusy = $state(false);
+	let markerError = $state<string | null>(null);
+	async function toggleMarker(user: ProjectSummary['user'], kind: 'watchlist' | 'cool') {
+		if (markerBusy) return;
+		markerBusy = true;
+		markerError = null;
+		const endpoint = kind === 'watchlist' ? 'watchlist' : 'cool-builder';
+		const key = kind === 'watchlist' ? 'watchlisted' : 'coolBuilder';
+		const next = kind === 'watchlist' ? !user.watchlisted : !user.coolBuilder;
+		try {
+			const res = await fetch(`/api/admin/users/${user.id}/${endpoint}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ [key]: next }),
+			});
+			const j = await res.json().catch(() => ({}));
+			if (!res.ok) throw new Error(j.message || j.error || `HTTP ${res.status}`);
+			// Reflect the authoritative (mutually-exclusive) result on every project
+			// row owned by this user.
+			for (const p of allProjects) {
+				if (p.user.id === user.id) {
+					p.user.watchlisted = !!j.watchlisted;
+					p.user.coolBuilder = !!j.coolBuilder;
+				}
+			}
+			allProjects = allProjects;
+		} catch (e) {
+			markerError = e instanceof Error ? e.message : String(e);
+		} finally {
+			markerBusy = false;
 		}
 	}
 
@@ -2251,6 +2284,7 @@
 										</span>
 										<span class="proj-sidebar-meta">
 											{isSuperAdmin ? (project.user.name ?? '—') : (project.user.slackId ?? '—')}
+											{#if project.user.watchlisted}<span class="marker marker-watch marker-sm" title="Watchlisted">W</span>{:else if project.user.coolBuilder}<span class="marker marker-cool marker-sm" title="Cool builder">★</span>{/if}
 											<span class="badge badge-{project.status} badge-sm">{project.status}</span>
 										</span>
 									</button>
@@ -2286,6 +2320,17 @@
 											</span>
 											<span>Update: <strong>{selectedProject.isUpdate ? 'Yes' : 'No'}</strong></span>
 											<span>Created: <strong>{formatDate(selectedProject.createdAt)}</strong></span>
+										</div>
+
+										<div class="marker-controls">
+											{#if selectedProject.user.watchlisted}<span class="marker marker-watch">watchlisted</span>{:else if selectedProject.user.coolBuilder}<span class="marker marker-cool">cool builder</span>{/if}
+											<button type="button" class="marker-btn" class:on={selectedProject.user.watchlisted} disabled={markerBusy} onclick={() => toggleMarker(selectedProject.user, 'watchlist')}>
+												{selectedProject.user.watchlisted ? '✓ Watchlisted' : 'Watchlist'}
+											</button>
+											<button type="button" class="marker-btn marker-btn-cool" class:on={selectedProject.user.coolBuilder} disabled={markerBusy} onclick={() => toggleMarker(selectedProject.user, 'cool')}>
+												{selectedProject.user.coolBuilder ? '✓ Cool builder' : 'Cool builder'}
+											</button>
+											{#if markerError}<span class="marker-err">{markerError}</span>{/if}
 										</div>
 
 										<div class="ht-actions">
@@ -3497,6 +3542,19 @@
 		font-size: 0.65rem;
 		padding: 0.1rem 0.35rem;
 	}
+
+	.marker { display: inline-block; padding: 0.05rem 0.4rem; border-radius: 999px; font-size: 0.72rem; font-weight: 700; vertical-align: middle; }
+	.marker-watch { background: var(--reject, #e23); color: #fff; }
+	.marker-cool { background: var(--approve, #2a7); color: #fff; }
+	.marker-sm { padding: 0; width: 1.05rem; height: 1.05rem; line-height: 1.05rem; text-align: center; border-radius: 999px; font-size: 0.6rem; margin-left: 0.3rem; }
+	.marker-controls { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-top: 0.5rem; }
+	.marker-btn { padding: 0.2rem 0.55rem; border-radius: 6px; border: 1px solid var(--border, #999); background: transparent; color: inherit; cursor: pointer; font-size: 0.8rem; }
+	.marker-btn:hover:not(:disabled) { border-color: var(--reject, #e23); }
+	.marker-btn.on { background: var(--reject, #e23); border-color: var(--reject, #e23); color: #fff; }
+	.marker-btn-cool:hover:not(:disabled) { border-color: var(--approve, #2a7); }
+	.marker-btn-cool.on { background: var(--approve, #2a7); border-color: var(--approve, #2a7); color: #fff; }
+	.marker-btn:disabled { opacity: 0.5; cursor: default; }
+	.marker-err { color: var(--reject, #e23); font-size: 0.78rem; }
 
 	.ht-pill {
 		display: inline-block;

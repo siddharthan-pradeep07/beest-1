@@ -19,6 +19,7 @@ export const AUDIT_ACTIONS = [
   'rsvp_submitted',
   'admin_ban',
   'admin_perms_change',
+  'admin_watchlist_change',
   'admin_pipes_adjust',
   'project_reviewed',
   'admin_impersonate',

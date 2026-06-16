@@ -87,6 +87,78 @@
   let projectName = $state('');
   let projectDesc = $state('');
   let projectType = $state('');
+
+  // Common "followed-a-tutorial" beginner projects. When a new project's name or
+  // description matches one of these, we show a soft nudge (not a hard block)
+  // asking the builder to add a unique twist. Phrases are matched loosely
+  // (case-insensitive, punctuation-insensitive, substring) so "Tic-Tac-Toe" and
+  // "tic tac toe game" both hit. Easy to extend — just add a lowercase phrase.
+  const TUTORIAL_BLACKLIST = [
+    'rock paper scissors',
+    'weather app',
+    'to do list',
+    'todo list',
+    'todo app',
+    'tic tac toe',
+    'calculator',
+    'number guessing game',
+    'guess the number',
+    'hangman',
+    'pomodoro',
+    'snake game',
+    'snake',
+    'snake clone',
+    'classic snake',
+    'snakes and ladders',
+    'quiz app',
+    'tip calculator',
+    'bmi calculator',
+    'temperature converter',
+    'unit converter',
+    'currency converter',
+    'currency conversion',
+    'currency exchange',
+    'money converter',
+    'exchange rate app',
+    'exchange rate converter',
+    'age calculator',
+    'digital clock',
+    'countdown timer',
+    'stopwatch',
+    'random quote generator',
+    'quote generator',
+    'dice roller',
+    'coin flip',
+    'magic 8 ball',
+    'color picker',
+    'random color generator',
+    'notes app',
+    'simple chatbot',
+  ];
+
+  // Normalize to lowercase with non-alphanumerics collapsed to single spaces so
+  // matching ignores punctuation/casing/spacing differences.
+  function normalizeForBlacklist(s: string): string {
+    return ` ${s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim()} `;
+  }
+
+  function matchedTutorialPhrase(name: string, desc: string): string | null {
+    const haystack = normalizeForBlacklist(`${name} ${desc}`);
+    for (const phrase of TUTORIAL_BLACKLIST) {
+      if (haystack.includes(` ${phrase} `)) return phrase;
+    }
+    return null;
+  }
+
+  let showTutorialWarning = $state(false);
+  let tutorialWarningAcknowledged = $state(false);
+
+  function acknowledgeTutorialWarning() {
+    tutorialWarningAcknowledged = true;
+    showTutorialWarning = false;
+    submitProject();
+  }
+
   let codeUrl = $state('');
   let demoUrl = $state('');
   let readmeUrl = $state('');
@@ -288,7 +360,7 @@
   let resubmitLoading = $state(false);
 
   // Shipping eligibility
-  let shippingCheck = $state<{ hasAddress: boolean; hasBirthdate: boolean; identityVerified: boolean; eligible: boolean; addressPortalUrl: string; identityPortalUrl: string } | null>(null);
+  let shippingCheck = $state<{ hasAddress: boolean; hasBirthdate: boolean; identityVerified: boolean; identityEligible: boolean; identityStatus: 'eligible' | 'ineligible' | 'unverified'; eligible: boolean; addressPortalUrl: string; identityPortalUrl: string } | null>(null);
   let shippingCheckLoading = $state(false);
   let showShippingPrompt = $state(false);
   let identityPollAttempts = $state(0);
@@ -321,6 +393,8 @@
     aiUseDescription = '';
     keystrokes = 0;
     formError = '';
+    showTutorialWarning = false;
+    tutorialWarningAcknowledged = false;
     checkOpenSource = false;
     checkDemoable = false;
     checkReadme = false;
@@ -663,6 +737,15 @@
 
   async function submitProject() {
     if (!canSubmit) return;
+
+    // Soft nudge when a project (new OR renamed) looks like a basic tutorial
+    // clone. Firing on edit too closes the obvious bypass of creating with a
+    // clean name then renaming to a blacklisted one. Shown once per open form.
+    if (!tutorialWarningAcknowledged && matchedTutorialPhrase(projectName, projectDesc)) {
+      showTutorialWarning = true;
+      return;
+    }
+
     formError = '';
     submitting = true;
 
@@ -1896,15 +1979,20 @@
         <h2 class="section-title">Complete Your Profile</h2>
         <p class="shipping-prompt-text">Before submitting for review, we need a few things from your Hack Club Auth profile — we use these to verify you and to ship prizes when your project is approved:</p>
         <div class="shipping-prompt-items">
-          {#if !shippingCheck.identityVerified}
+          {#if shippingCheck.identityStatus === 'unverified'}
             <div class="shipping-prompt-item missing">
               <span class="shipping-icon">&#x2717;</span>
               <span>Identity not verified</span>
             </div>
+          {:else if shippingCheck.identityStatus === 'ineligible'}
+            <div class="shipping-prompt-item missing">
+              <span class="shipping-icon">&#x2717;</span>
+              <span>Identity verified, but not eligible for YSWS rewards</span>
+            </div>
           {:else}
             <div class="shipping-prompt-item done">
               <span class="shipping-icon">&#x2713;</span>
-              <span>Identity verified</span>
+              <span>Identity verified &amp; eligible</span>
             </div>
           {/if}
           {#if !shippingCheck.hasAddress}
@@ -1930,7 +2018,7 @@
             </div>
           {/if}
         </div>
-        {#if !shippingCheck.identityVerified}
+        {#if shippingCheck.identityStatus === 'unverified'}
           <a class="action-btn shipping-portal-btn" href={shippingCheck.identityPortalUrl} target="_blank" rel="noopener noreferrer">
             Verify your identity
           </a>
@@ -1942,6 +2030,8 @@
             </button>
             <p class="shipping-prompt-poll">We stopped checking automatically. Tap above once HQ approves your document.</p>
           {/if}
+        {:else if shippingCheck.identityStatus === 'ineligible'}
+          <p class="shipping-prompt-poll">Your Hack Club identity is verified, but it's marked not eligible for YSWS rewards — usually an age or region restriction. You can keep building, but this project can't be shipped for review. If you think this is a mistake, reach out to Hack Club.</p>
         {:else if shippingCheck.eligible}
           <p class="shipping-prompt-poll shipping-prompt-success">Identity verified! Click Submit again to ship.</p>
         {/if}
@@ -2481,6 +2571,16 @@
           </div>
           {#if intentError}<p class="intent-error">{intentError}</p>{/if}
         {/if}
+      </div>
+    </div>
+    {/if}
+
+    {#if showTutorialWarning}
+    <div use:portal class="tutorial-warning-overlay" role="dialog" aria-modal="true" aria-label="Tutorial project notice">
+      <div class="tutorial-warning-modal">
+        <h2 class="tutorial-warning-title">One quick thing</h2>
+        <p class="tutorial-warning-text">Beest is a space for creatives, tutorials are valuable but if you are creating a basic tutoral please add a unique feature, twist or detail, otherwise it may not be accepted.</p>
+        <button class="tutorial-warning-ok" onclick={acknowledgeTutorialWarning}>OK</button>
       </div>
     </div>
     {/if}
@@ -5680,6 +5780,57 @@
     margin: 1rem 0 0;
     color: #ffb3b3;
     font-size: 0.85rem;
+  }
+
+  /* ── tutorial warning modal ── */
+  .tutorial-warning-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.78);
+    z-index: 1200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(6px);
+    animation: fadeIn 200ms ease;
+    padding: 1rem;
+  }
+  .tutorial-warning-modal {
+    background: #4b4840;
+    color: #e8e0d4;
+    border: 1px solid #6c6659;
+    border-radius: 14px;
+    padding: 2rem 1.75rem;
+    width: 100%;
+    max-width: 440px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  }
+  .tutorial-warning-title {
+    margin: 0 0 0.75rem;
+    font-size: 1.4rem;
+  }
+  .tutorial-warning-text {
+    margin: 0 0 1.5rem;
+    font-size: 0.97rem;
+    line-height: 1.5;
+    opacity: 0.9;
+  }
+  .tutorial-warning-ok {
+    padding: 0.65rem 2.5rem;
+    border-radius: 10px;
+    border: 1px solid #93b4cd;
+    background: #52504a;
+    color: #e8e0d4;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+  }
+  .tutorial-warning-ok:hover {
+    background: #5d5a52;
+    border-color: #c5d8e6;
+    transform: translateY(-2px);
   }
 
   /* ── shop modal ── */

@@ -30,6 +30,17 @@ export class User {
   @Column({ nullable: true, name: 'reviewer_user_note', type: 'text' })
   reviewerUserNote: string | null;
 
+  // Reviewer-facing sentiment markers. Purely notes: they do NOT change the
+  // user's perms/access (a marked user behaves exactly like a normal User). Any
+  // reviewer can toggle them from the review or audit panel. They are mutually
+  // exclusive — a builder is either watch-listed (concerning) or a cool builder
+  // (trusted), never both.
+  @Column({ name: 'watchlisted', default: false })
+  watchlisted: boolean;
+
+  @Column({ name: 'cool_builder', default: false })
+  coolBuilder: boolean;
+
   @Column({ name: 'two_emails', default: false })
   twoEmails: boolean;
 

@@ -537,6 +537,46 @@ export class AdminService {
     }
   }
 
+  /**
+   * Toggle a reviewer-facing sentiment marker on a user. These are pure notes —
+   * they do NOT alter the user's perms/access, so any reviewer (not just a Super
+   * Admin) may set them. The two markers are mutually exclusive: enabling one
+   * clears the other. Returns the resulting flags.
+   */
+  async setReviewerMarker(
+    userId: string,
+    marker: 'watchlisted' | 'coolBuilder',
+    value: boolean,
+    adminId?: string,
+  ): Promise<{ watchlisted: boolean; coolBuilder: boolean }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    user[marker] = value;
+    // Mutually exclusive — a builder can't be both watch-listed and cool.
+    if (value) {
+      const other = marker === 'watchlisted' ? 'coolBuilder' : 'watchlisted';
+      user[other] = false;
+    }
+    await this.userRepo.save(user);
+
+    const identifier = user.name || user.slackId || user.hcaSub;
+    const label =
+      marker === 'watchlisted'
+        ? value
+          ? `Added ${identifier} to the watchlist`
+          : `Removed ${identifier} from the watchlist`
+        : value
+          ? `Marked ${identifier} as a cool builder`
+          : `Unmarked ${identifier} as a cool builder`;
+    await this.auditLogService.log(userId, 'admin_watchlist_change', label);
+    if (adminId) {
+      await this.auditLogService.log(adminId, 'admin_watchlist_change', label);
+    }
+
+    return { watchlisted: user.watchlisted, coolBuilder: user.coolBuilder };
+  }
+
   // ── Projects ──
 
   async listAllProjects(isSuperAdmin: boolean) {
@@ -591,6 +631,8 @@ export class AdminService {
             name: isSuperAdmin ? p.user?.name : null,
             slackId: p.user?.slackId,
             reviewerUserNote: p.user?.reviewerUserNote ?? null,
+            watchlisted: !!p.user?.watchlisted,
+            coolBuilder: !!p.user?.coolBuilder,
           },
           latestSubmission: latestSub ? {
             id: latestSub.id,

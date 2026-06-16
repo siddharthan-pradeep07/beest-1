@@ -14,6 +14,7 @@ import { User } from '../entities/user.entity';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { RsvpService } from '../rsvp/rsvp.service';
 import { ProjectAirtableSyncService } from '../projects/project-airtable-sync.service';
+import { IdentityService } from '../identity/identity.service';
 import { IframeContextService } from './iframe-context.service';
 import { AdminService } from './admin.service';
 import { Inject, forwardRef } from '@nestjs/common';
@@ -75,6 +76,7 @@ export class AuditService {
     private readonly auditLogService: AuditLogService,
     private readonly rsvpService: RsvpService,
     private readonly airtableSync: ProjectAirtableSyncService,
+    private readonly identityService: IdentityService,
     @Inject(forwardRef(() => AdminService))
     private readonly adminService: AdminService,
   ) {}
@@ -255,6 +257,15 @@ export class AuditService {
     });
 
     const user = project.user;
+    // Live identity status so the reviewer can see whether the builder is
+    // actually YSWS-eligible — a `verified_ineligible` user can slip through
+    // older queue entries that predate the ship-time eligibility gate.
+    const identityStatus = user
+      ? await this.identityService.getStatus({
+          slackId: user.slackId,
+          email: user.email,
+        })
+      : 'unverified';
     return {
       id: project.id,
       name: project.name,
@@ -281,6 +292,9 @@ export class AuditService {
             slackId: user.slackId,
             email: user.email,
             hackatimeConnected: !!user.hackatimeToken,
+            identityStatus,
+            watchlisted: !!user.watchlisted,
+            coolBuilder: !!user.coolBuilder,
           }
         : null,
       originalApproval: originalApproval
