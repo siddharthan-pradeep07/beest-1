@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import '@fontsource/opendyslexic/400.css';
 	import TimelapsePanel from '$lib/components/admin/TimelapsePanel.svelte';
 
@@ -114,7 +114,11 @@
 
 	// Audit iframe (heartbeat timeline + anomaly signals).
 	let iframeEl = $state<HTMLIFrameElement | null>(null);
-	let iframeSrc = $state<string | null>(null);
+	// The audit embed is loaded by POSTing the ctx into the iframe (see mintIframe)
+	// rather than via its `src`, so the single-use id never rides in the URL. This
+	// just gates whether the (named) iframe is mounted yet.
+	let showIframe = $state(false);
+	const AUDIT_FRAME_NAME = 'beest-audit-embed';
 	let iframeHeight = $state(560);
 	let iframeError = $state<string | null>(null);
 	let trustLoading = $state(false);
@@ -207,7 +211,7 @@
 		submitError = null;
 		filterInfo = null;
 		trust = null;
-		iframeSrc = null;
+		showIframe = false;
 		iframeError = null;
 		iframeHeight = 560;
 		if (c) {
@@ -221,21 +225,44 @@
 	// queue client-side), so each embed gets its own short-lived ctx.
 	async function mintIframe(projectId: string) {
 		iframeError = null;
+		showIframe = false;
 		try {
 			const res = await fetch(`/api/admin/audit/${projectId}/iframe-context`, { method: 'POST' });
 			const j = await res.json().catch(() => ({}));
 			if (!res.ok || !j.ctx) throw new Error(j.message || j.error || `HTTP ${res.status}`);
-			// Seed the embed's first paint with the current theme so it doesn't flash
-			// the wrong palette; live toggles after load go via postMessage below.
-			const q = new URLSearchParams({
-				ctx: j.ctx,
-				light: lightMode ? '1' : '0',
-				dys: dyslexicFont ? '1' : '0'
-			});
-			iframeSrc = `${auditSvcUrl}/panel?${q.toString()}`;
+			// Mount the named iframe, then POST the ctx into it. Delivering it in the
+			// request body (not the URL) keeps the single-use id out of the audit
+			// service's access logs. The theme prefs ride along so the first paint
+			// matches; live toggles after load go via postMessage below.
+			showIframe = true;
+			await tick();
+			submitCtxToIframe(j.ctx);
 		} catch (e) {
 			iframeError = e instanceof Error ? e.message : String(e);
 		}
+	}
+
+	// Build a transient hidden form and submit it into the audit iframe, so the
+	// browser navigates the frame via POST (ctx in the body, never the URL).
+	function submitCtxToIframe(ctx: string) {
+		if (!iframeEl) return;
+		const form = document.createElement('form');
+		form.method = 'POST';
+		form.action = `${auditSvcUrl}/panel`;
+		form.target = AUDIT_FRAME_NAME;
+		const field = (name: string, value: string) => {
+			const input = document.createElement('input');
+			input.type = 'hidden';
+			input.name = name;
+			input.value = value;
+			form.appendChild(input);
+		};
+		field('ctx', ctx);
+		field('light', lightMode ? '1' : '0');
+		field('dys', dyslexicFont ? '1' : '0');
+		document.body.appendChild(form);
+		form.submit();
+		form.remove();
 	}
 
 	// Push Light/Dark + dyslexic-font changes into the embed without reloading it
@@ -600,11 +627,11 @@
 						<h3>Hackatime heartbeats &amp; anomaly signals</h3>
 						{#if iframeError}
 							<div class="err sub-err">audit panel failed to load: {iframeError}</div>
-						{:else if iframeSrc}
+						{:else if showIframe}
 							<iframe
 								bind:this={iframeEl}
 								title="Heartbeat activity &amp; anomaly analysis"
-								src={iframeSrc}
+								name={AUDIT_FRAME_NAME}
 								style:height={`${iframeHeight}px`}
 								class="audit-frame"
 								sandbox="allow-scripts allow-same-origin"

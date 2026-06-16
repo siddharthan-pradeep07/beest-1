@@ -20,7 +20,12 @@ export interface AuditIframeContext {
   hackatimeToken?: string | null;
 }
 
-const TTL_MS = 10 * 60 * 1000; // 10 minutes
+// The embed resolves its ctx server-to-server within ~1s of minting, and the
+// id is burned on first use. A long TTL only widens the window in which a ctx
+// that leaked *before* it was consumed (e.g. captured from a log/proxy in front
+// of the audit service before that service resolved it) could still be replayed.
+// Keep it just long enough to cover a slow panel load / cold start.
+const TTL_MS = 60 * 1000; // 60 seconds
 
 @Injectable()
 export class IframeContextService {
