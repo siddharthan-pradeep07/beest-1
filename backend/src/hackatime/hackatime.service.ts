@@ -547,8 +547,11 @@ export class HackatimeService implements OnModuleInit {
     }
 
     try {
+      // include_archived=true: Hackatime excludes archived projects by default,
+      // so a linked project the user later archives would silently vanish from
+      // the picker. We want the full all-time list.
       const res = await fetchWithTimeout(
-        `${this.baseUrl}/api/v1/authenticated/projects`,
+        `${this.baseUrl}/api/v1/authenticated/projects?include_archived=true`,
         {
           headers: { Authorization: `Bearer ${user.hackatimeToken}` },
         },
@@ -598,8 +601,12 @@ export class HackatimeService implements OnModuleInit {
     }
 
     try {
+      // include_archived=true: total_seconds defaults to all-time (the upstream
+      // query uses default_stats_start: 0), but archived projects are filtered
+      // out unless we ask for them. A user who archived a linked project would
+      // otherwise see 0h here while Hackatime still shows the full total.
       const res = await fetchWithTimeout(
-        `${this.baseUrl}/api/v1/authenticated/projects`,
+        `${this.baseUrl}/api/v1/authenticated/projects?include_archived=true`,
         {
           headers: { Authorization: `Bearer ${user.hackatimeToken}` },
         },
@@ -623,13 +630,27 @@ export class HackatimeService implements OnModuleInit {
       const nameSet = new Set(projectNames);
       let totalSeconds = 0;
       const perProject: Record<string, number> = {};
+      const matched = new Set<string>();
 
       for (const p of projects) {
         if (nameSet.has(p.name)) {
+          matched.add(p.name);
           const secs = p.total_seconds ?? 0;
           totalSeconds += secs;
           perProject[p.name] = Math.round((secs / 3600) * 10) / 10;
         }
+      }
+
+      // A linked project that returns no match is the silent-zero case: the user
+      // sees 0h on Beest with no error while Hackatime shows real hours. Usually a
+      // Hackatime-side rename of an already-linked project. Log it so it's not invisible.
+      const unmatched = projectNames.filter((n) => !matched.has(n));
+      if (unmatched.length > 0) {
+        this.logger.warn(
+          `Hackatime: ${unmatched.length} linked project(s) had no match for user ${userId} ` +
+            `(returned 0h). Unmatched: ${JSON.stringify(unmatched)}. ` +
+            `Available: ${JSON.stringify(projects.map((p) => p.name))}`,
+        );
       }
 
       return {

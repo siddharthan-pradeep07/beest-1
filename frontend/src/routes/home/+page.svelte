@@ -136,16 +136,17 @@
     'simple chatbot',
   ];
 
-  // Normalize to lowercase with non-alphanumerics collapsed to single spaces so
-  // matching ignores punctuation/casing/spacing differences.
+  // Lowercase and strip every non-alphanumeric char (dashes, spaces, punctuation)
+  // so matching is on likeness rather than an exact string — "Tic-Tac-Toe",
+  // "tic tac toe", and "tictactoe" all collapse to the same thing.
   function normalizeForBlacklist(s: string): string {
-    return ` ${s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim()} `;
+    return s.toLowerCase().replace(/[^a-z0-9]+/g, '');
   }
 
   function matchedTutorialPhrase(name: string, desc: string): string | null {
     const haystack = normalizeForBlacklist(`${name} ${desc}`);
     for (const phrase of TUTORIAL_BLACKLIST) {
-      if (haystack.includes(` ${phrase} `)) return phrase;
+      if (haystack.includes(normalizeForBlacklist(phrase))) return phrase;
     }
     return null;
   }
@@ -1528,7 +1529,7 @@
           {/each}
           {#if data.role === 'Super Admin'}
             <li><a href="/admin" class="nav-btn nav-link">Admin</a></li>
-          {:else if data.role === 'Reviewer' || data.role === 'Fraud Reviewer'}
+          {:else if data.role === 'Reviewer' || data.role === 'Fraud Reviewer' || data.role === 'Fulfiller'}
             <li><a href="/admin" class="nav-btn nav-link">Review</a></li>
           {/if}
         </ul>
@@ -5805,16 +5806,19 @@
     max-width: 440px;
     text-align: center;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    font-family: "Sunny Mood", "Courier New", monospace;
   }
   .tutorial-warning-title {
     margin: 0 0 0.75rem;
-    font-size: 1.4rem;
+    font-size: 1.6rem;
+    font-family: "Sunny Mood", "Courier New", monospace;
   }
   .tutorial-warning-text {
     margin: 0 0 1.5rem;
-    font-size: 0.97rem;
+    font-size: 1.1rem;
     line-height: 1.5;
     opacity: 0.9;
+    font-family: "Sunny Mood", "Courier New", monospace;
   }
   .tutorial-warning-ok {
     padding: 0.65rem 2.5rem;
@@ -5822,10 +5826,11 @@
     border: 1px solid #93b4cd;
     background: #52504a;
     color: #e8e0d4;
-    font-size: 1rem;
+    font-size: 1.1rem;
     font-weight: 700;
     cursor: pointer;
     transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+    font-family: "Sunny Mood", "Courier New", monospace;
   }
   .tutorial-warning-ok:hover {
     background: #5d5a52;

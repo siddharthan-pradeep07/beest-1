@@ -8,15 +8,14 @@ import {
 import { AuthService } from '../auth/auth.service';
 import { RsvpService } from '../rsvp/rsvp.service';
 
-const REVIEWER_ROLES = ['Super Admin', 'Reviewer', 'Fraud Reviewer', 'Fulfiller'];
+const FULFILLER_ROLES = ['Super Admin', 'Fulfiller'];
 
 /**
- * Guard that requires a valid JWT AND Reviewer-level+ Perms in Airtable.
- * Allows Super Admin, Reviewer, Fraud Reviewer, and Fulfiller (who reviews but
- * has no audit access).
+ * Guard for the fulfilment (orders) routes. Allows Super Admin and Fulfiller.
+ * Checks Airtable on every request — no caching, so revocations are instant.
  */
 @Injectable()
-export class ReviewerGuard implements CanActivate {
+export class FulfillerGuard implements CanActivate {
   constructor(
     private readonly authService: AuthService,
     private readonly rsvpService: RsvpService,
@@ -42,7 +41,7 @@ export class ReviewerGuard implements CanActivate {
     if (!email) throw new ForbiddenException();
 
     const perms = await this.rsvpService.getPerms(email);
-    if (!perms || !REVIEWER_ROLES.includes(perms)) {
+    if (!perms || !FULFILLER_ROLES.includes(perms)) {
       throw new ForbiddenException();
     }
 

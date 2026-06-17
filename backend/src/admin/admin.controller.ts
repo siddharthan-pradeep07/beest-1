@@ -16,6 +16,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SuperAdminGuard } from './super-admin.guard';
 import { ReviewerGuard } from './reviewer.guard';
 import { FraudReviewerGuard } from './fraud-reviewer.guard';
+import { FulfillerGuard } from './fulfiller.guard';
 import { AdminService } from './admin.service';
 import { AuditService, type AuditAction } from './audit.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
@@ -561,7 +562,7 @@ export class AdminController {
 
   // ── Orders / Fulfillment ──
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Get('orders')
   listOrders(@Req() req: Request) {
     const query = (req as any).query ?? {};
@@ -572,19 +573,19 @@ export class AdminController {
     });
   }
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Get('orders/:id/detail')
   async getOrderDetail(@Param('id', ParseUUIDPipe) id: string) {
     return this.adminService.getOrderDetailForFulfillment(id);
   }
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Post('orders/:id/fulfill')
   async fulfillOrder(@Param('id', ParseUUIDPipe) id: string) {
     return this.shopService.fulfillOrder(id);
   }
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Post('orders/:id/refund')
   async refundOrder(
     @Param('id', ParseUUIDPipe) id: string,
@@ -594,7 +595,7 @@ export class AdminController {
     return this.shopService.refundOrder(id, { adminId });
   }
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Post('orders/:id/merge')
   async mergeOrder(
     @Param('id', ParseUUIDPipe) id: string,
@@ -604,7 +605,7 @@ export class AdminController {
     return this.shopService.mergeOrders(id, adminId);
   }
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Post('orders/:id/message')
   async sendFulfillmentMessage(
     @Param('id', ParseUUIDPipe) id: string,

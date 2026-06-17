@@ -36,6 +36,7 @@ const VALID_PERMS = [
   'Helper',
   'Reviewer',
   'Fraud Reviewer',
+  'Fulfiller',
   'Super Admin',
   'Banned',
 ] as const;

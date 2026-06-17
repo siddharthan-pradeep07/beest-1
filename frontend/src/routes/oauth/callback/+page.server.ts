@@ -56,7 +56,7 @@ export const load: PageServerLoad = async ({ url, cookies }) => {
 
 	// Banned users get redirected without receiving tokens
 	if (redirectTo === 'https://fraud.hackclub.com/') {
-		redirect(302, 'https://fraud.hackclub.com/');
+		redirect(302, '/fraud');
 	}
 
 	// Store JWT (1h) and refresh token (90d) in httpOnly cookies

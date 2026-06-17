@@ -51,7 +51,7 @@ export const load: PageServerLoad = async ({ url, cookies }) => {
 	if (redirectTo === 'https://fraud.hackclub.com/') {
 		cookies.delete('auth_token', { path: '/' });
 		cookies.delete('refresh_token', { path: '/' });
-		redirect(302, 'https://fraud.hackclub.com/');
+		redirect(302, '/fraud');
 	}
 
 	// Defense-in-depth: only follow relative redirects from the backend

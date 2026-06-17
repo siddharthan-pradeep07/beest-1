@@ -28,6 +28,7 @@ import { IframeContextService } from './iframe-context.service';
 import { SuperAdminGuard } from './super-admin.guard';
 import { ReviewerGuard } from './reviewer.guard';
 import { FraudReviewerGuard } from './fraud-reviewer.guard';
+import { FulfillerGuard } from './fulfiller.guard';
 import { AuditServiceKeyGuard } from './audit-service-key.guard';
 
 @Module({
@@ -52,6 +53,7 @@ import { AuditServiceKeyGuard } from './audit-service-key.guard';
     SuperAdminGuard,
     ReviewerGuard,
     FraudReviewerGuard,
+    FulfillerGuard,
     AuditServiceKeyGuard,
   ],
 })

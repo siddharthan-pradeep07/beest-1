@@ -810,7 +810,7 @@ export class ProjectsService {
     if (!isAuthor && !isProjectOwner) {
       // Check if user is admin
       const perms = await this.rsvpService.getPerms(userEmail);
-      const isAdmin = perms && ['Super Admin', 'Reviewer', 'Fraud Reviewer'].includes(perms);
+      const isAdmin = perms && ['Super Admin', 'Reviewer', 'Fraud Reviewer', 'Fulfiller'].includes(perms);
       if (!isAdmin) {
         throw new ForbiddenException('Not allowed to delete this comment');
       }

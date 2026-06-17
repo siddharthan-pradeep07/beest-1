@@ -37,9 +37,15 @@
 		displayDate: string;
 	}
 
-	const isReviewer = $derived(data.role === 'Reviewer' || data.role === 'Fraud Reviewer');
+	// Fulfiller is reviewer-tier for the tab layout (Projects + Leaderboard, none
+	// of the Super-Admin-only tabs), but additionally gets the Fulfillment tab via
+	// canFulfill below. It has no audit access.
+	const isReviewer = $derived(
+		data.role === 'Reviewer' || data.role === 'Fraud Reviewer' || data.role === 'Fulfiller'
+	);
 	const isSuperAdmin = $derived(data.role === 'Super Admin');
 	const canBan = $derived(data.role === 'Super Admin' || data.role === 'Fraud Reviewer');
+	const canFulfill = $derived(data.role === 'Super Admin' || data.role === 'Fulfiller');
 	let justificationEl = $state<HTMLTextAreaElement | null>(null);
 	let userFeedbackEl = $state<HTMLTextAreaElement | null>(null);
 	let persistentUserNoteEl = $state<HTMLTextAreaElement | null>(null);
@@ -607,7 +613,7 @@
 		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 	}
 
-	const PERMS_OPTIONS = ['User', 'Helper', 'Reviewer', 'Fraud Reviewer', 'Super Admin', 'Banned'];
+	const PERMS_OPTIONS = ['User', 'Helper', 'Reviewer', 'Fraud Reviewer', 'Fulfiller', 'Super Admin', 'Banned'];
 
 	const PROJECT_TYPES = ['web', 'windows', 'mac', 'linux', 'cross-platform', 'python', 'android', 'ios', 'other'];
 
@@ -845,7 +851,7 @@
 	}
 
 	async function banUser() {
-		if (!selectedUser || !confirm(`BAN this user? This will:\n- Set their Airtable status to Banned\n- Revoke all sessions\n- Redirect them to fraud.hackclub.com on any future login`)) return;
+		if (!selectedUser || !confirm(`BAN this user? This will:\n- Set their Airtable status to Banned\n- Revoke all sessions\n- Redirect them to the /fraud ban page on any future login`)) return;
 		actionLoading = 'ban';
 		try {
 			const res = await fetch(`/api/admin/users/${selectedUser.id}/ban`, { method: 'POST' });
@@ -1509,6 +1515,8 @@
 				<button class="tab" class:active={activeTab === 'events'} onclick={() => activeTab = 'events'}>Events</button>
 			{/if}
 			<button class="tab" class:active={activeTab === 'shop'} onclick={() => activeTab = 'shop'}>Shop</button>
+		{/if}
+		{#if canFulfill}
 			<button class="tab" class:active={activeTab === 'fulfillment'} onclick={() => activeTab = 'fulfillment'}>Fulfillment</button>
 		{/if}
 		<button class="tab" class:active={activeTab === 'projects'} onclick={() => activeTab = 'projects'}>Projects</button>

@@ -18,8 +18,12 @@
 			</svg>
 			<h1>So now you're banned; what's next?</h1>
 			<p class="intro-text">
-				If you're seeing this page, you've been banned from Beest. Beest keeps its own ban list, separate
-				from Hackatime - so you can be banned from Beest without being banned from Hackatime itself.
+				Hey - if you're reading this, you've been banned from Beest. There are a few reasons this might have
+				happened: you may be over 18 and therefore not eligible, you may have attempted to cheat the time
+				tracking system, you may have conducted yourself poorly and had it result in a ban, or we may have
+				simply made a mistake. Beest keeps its own ban list, separate from Hackatime - so you can be banned
+				from Beest without being banned from Hackatime itself. If you don't know why you're banned, reach out
+				to the team - or to the fraud squad if it's related to Hackatime hour fraud.
 			</p>
 		</header>
 
