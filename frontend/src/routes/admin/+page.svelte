@@ -615,6 +615,17 @@
 
 	const PERMS_OPTIONS = ['User', 'Helper', 'Reviewer', 'Fraud Reviewer', 'Fulfiller', 'Super Admin', 'Banned'];
 
+	// Roles only a Super Admin may grant or act upon — mirrors the backend guard.
+	// Fulfillers can moderate regular builders but can't mint peers/Super Admins
+	// or ban/demote someone who already holds one of those roles.
+	const ELEVATED_PERMS = ['Fulfiller', 'Super Admin'];
+	const assignablePerms = $derived(
+		isSuperAdmin ? PERMS_OPTIONS : PERMS_OPTIONS.filter((p) => !ELEVATED_PERMS.includes(p))
+	);
+	const canActOnTarget = $derived(
+		isSuperAdmin || !ELEVATED_PERMS.includes(userDetail?.perms ?? '')
+	);
+
 	const PROJECT_TYPES = ['web', 'windows', 'mac', 'linux', 'cross-platform', 'python', 'android', 'ios', 'other'];
 
 	let filteredProjects = $derived.by(() => {
@@ -1482,12 +1493,15 @@
 	}
 
 	$effect(() => {
-		if (isReviewer && activeTab === 'users') {
+		// Plain reviewers (Reviewer / Fraud Reviewer) have no Users tab; Fulfillers do.
+		if (!canFulfill && activeTab === 'users') {
 			activeTab = 'projects';
 			return;
 		}
 		if (activeTab === 'users') { loadUsers(); }
-		if (activeTab === 'stats') { loadUsers(); if (isSuperAdmin) loadUnreviewedHours(); }
+		// Fulfillers see the charts/funnel only — the user-count cards and unreviewed
+		// hours need Super-Admin-only endpoints (/users, /stats/unreviewed-hours).
+		if (activeTab === 'stats' && isSuperAdmin) { loadUsers(); loadUnreviewedHours(); }
 		if (activeTab === 'news') loadNews();
 		if (activeTab === 'events') { loadEvents(); if (eventHostUsers.length === 0) loadEventHostUsers(); }
 		if (activeTab === 'projects') loadProjects();
@@ -1507,16 +1521,16 @@
 	</header>
 
 	<nav class="admin-tabs">
-		{#if !isReviewer}
+		{#if canFulfill}
 			<button class="tab" class:active={activeTab === 'users'} onclick={() => { activeTab = 'users'; closeDetail(); }}>Users</button>
 			<button class="tab" class:active={activeTab === 'stats'} onclick={() => activeTab = 'stats'}>Stats</button>
 			<button class="tab" class:active={activeTab === 'news'} onclick={() => activeTab = 'news'}>News</button>
-			{#if isSuperAdmin}
-				<button class="tab" class:active={activeTab === 'events'} onclick={() => activeTab = 'events'}>Events</button>
-			{/if}
-			<button class="tab" class:active={activeTab === 'shop'} onclick={() => activeTab = 'shop'}>Shop</button>
+		{/if}
+		{#if isSuperAdmin}
+			<button class="tab" class:active={activeTab === 'events'} onclick={() => activeTab = 'events'}>Events</button>
 		{/if}
 		{#if canFulfill}
+			<button class="tab" class:active={activeTab === 'shop'} onclick={() => activeTab = 'shop'}>Shop</button>
 			<button class="tab" class:active={activeTab === 'fulfillment'} onclick={() => activeTab = 'fulfillment'}>Fulfillment</button>
 		{/if}
 		<button class="tab" class:active={activeTab === 'projects'} onclick={() => activeTab = 'projects'}>Projects</button>
@@ -1619,12 +1633,12 @@
 									<h3>Actions</h3>
 									<div class="actions">
 										<div class="perms-action">
-											<button class="btn btn-promote" onclick={() => showPermsDropdown = !showPermsDropdown} disabled={actionLoading !== ''}>
+											<button class="btn btn-promote" onclick={() => showPermsDropdown = !showPermsDropdown} disabled={actionLoading !== '' || !canActOnTarget} title={!canActOnTarget ? 'Only Super Admins can change the role of a Fulfiller or Super Admin' : ''}>
 												Promote / Change Role
 											</button>
 											{#if showPermsDropdown}
 												<div class="perms-dropdown">
-													{#each PERMS_OPTIONS as perm}
+													{#each assignablePerms as perm}
 														<button
 															class="perms-option"
 															class:current={userDetail.perms === perm}
@@ -1638,13 +1652,15 @@
 											{/if}
 										</div>
 
-										<button class="btn btn-ban" onclick={banUser} disabled={actionLoading !== '' || userDetail.perms === 'Banned'}>
+										<button class="btn btn-ban" onclick={banUser} disabled={actionLoading !== '' || userDetail.perms === 'Banned' || !canActOnTarget} title={!canActOnTarget ? 'Only Super Admins can ban a Fulfiller or Super Admin' : ''}>
 											{actionLoading === 'ban' ? 'Banning...' : 'Ban User'}
 										</button>
 
-										<button class="btn btn-impersonate" onclick={impersonateUser} disabled={actionLoading !== '' || userDetail.perms === 'Banned'}>
-											{actionLoading === 'impersonate' ? 'Starting...' : 'Impersonate'}
-										</button>
+										{#if isSuperAdmin}
+											<button class="btn btn-impersonate" onclick={impersonateUser} disabled={actionLoading !== '' || userDetail.perms === 'Banned'}>
+												{actionLoading === 'impersonate' ? 'Starting...' : 'Impersonate'}
+											</button>
+										{/if}
 									</div>
 								</section>
 
@@ -1757,15 +1773,15 @@
 		{:else if activeTab === 'stats'}
 			<div class="stats-section">
 				<div class="stat-cards">
-					<div class="stat-card">
-						<span class="stat-value">{totalUsers}</span>
-						<span class="stat-label">Logged-in Users</span>
-					</div>
-					<div class="stat-card">
-						<span class="stat-value">{totalHackatime}</span>
-						<span class="stat-label">Hackatime Linked</span>
-					</div>
 					{#if isSuperAdmin}
+						<div class="stat-card">
+							<span class="stat-value">{totalUsers}</span>
+							<span class="stat-label">Logged-in Users</span>
+						</div>
+						<div class="stat-card">
+							<span class="stat-value">{totalHackatime}</span>
+							<span class="stat-label">Hackatime Linked</span>
+						</div>
 						<div class="stat-card" title="New Hackatime hours awaiting review across all unreviewed projects (excludes hours already approved on prior submissions). Cached for 60s.">
 							<span class="stat-value">
 								{#if unreviewedHours}

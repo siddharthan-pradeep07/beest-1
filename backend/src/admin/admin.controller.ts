@@ -35,30 +35,31 @@ export class AdminController {
     private readonly devlogsService: DevlogsService,
   ) {}
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Get('users')
   listUsers() {
     return this.adminService.listUsers();
   }
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Get('users/:id')
   getUser(@Param('id', ParseUUIDPipe) id: string) {
     return this.adminService.getUser(id);
   }
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Post('users/:id/ban')
   async banUser(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: Request,
   ) {
     const adminId = (req as any).user?.uid;
-    await this.adminService.banUser(id, adminId);
+    const isSuperAdmin = (req as any).user?.perms === 'Super Admin';
+    await this.adminService.banUser(id, adminId, isSuperAdmin);
     return { success: true };
   }
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Patch('users/:id/perms')
   async updatePerms(
     @Param('id', ParseUUIDPipe) id: string,
@@ -69,7 +70,8 @@ export class AdminController {
       throw new BadRequestException('perms is required');
     }
     const adminId = (req as any).user?.uid;
-    await this.adminService.updatePerms(id, body.perms, adminId);
+    const isSuperAdmin = (req as any).user?.perms === 'Super Admin';
+    await this.adminService.updatePerms(id, body.perms, adminId, isSuperAdmin);
     return { success: true };
   }
 
@@ -145,19 +147,19 @@ export class AdminController {
     return this.authService.issueImpersonationToken(id, adminUid, adminName);
   }
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Get('stats/dau')
   getDailyActiveUsers() {
     return this.adminService.getDailyActiveUsers();
   }
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Get('stats/dau/history')
   getDauHistory() {
     return this.adminService.getDauHistory();
   }
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Get('stats/signups')
   getSignupsHistory() {
     return this.adminService.getSignupsHistory();
@@ -214,7 +216,7 @@ export class AdminController {
     return this.adminService.deleteEvent(id);
   }
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Get('stats/funnel')
   getUserFunnel() {
     return this.adminService.getUserFunnel();
@@ -433,13 +435,13 @@ export class AdminController {
 
   // ── News CRUD ──
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Get('news')
   listNews() {
     return this.adminService.listNews();
   }
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Post('news')
   async createNews(@Body() body: { text?: string; displayDate?: string }) {
     if (!body.text || !body.displayDate) {
@@ -448,7 +450,7 @@ export class AdminController {
     return this.adminService.createNews(body.text, body.displayDate);
   }
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Patch('news/:id')
   async updateNews(
     @Param('id', ParseUUIDPipe) id: string,
@@ -457,7 +459,7 @@ export class AdminController {
     return this.adminService.updateNews(id, body);
   }
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Delete('news/:id')
   async deleteNews(@Param('id', ParseUUIDPipe) id: string) {
     await this.adminService.deleteNews(id);
@@ -466,13 +468,13 @@ export class AdminController {
 
   // ── Shop CRUD ──
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Get('shop')
   listShopItems() {
     return this.adminService.listShopItems();
   }
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Post('shop')
   async createShopItem(@Body() body: {
     name?: string;
@@ -509,7 +511,7 @@ export class AdminController {
     });
   }
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Patch('shop/reorder')
   async reorderShopItems(@Body() body: { items?: { id: string; sortOrder: number }[] }) {
     if (!Array.isArray(body.items) || body.items.length === 0) {
@@ -524,7 +526,7 @@ export class AdminController {
     return { success: true };
   }
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Patch('shop/:id')
   async updateShopItem(
     @Param('id', ParseUUIDPipe) id: string,
@@ -553,7 +555,7 @@ export class AdminController {
     return this.adminService.updateShopItem(id, body);
   }
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(FulfillerGuard)
   @Delete('shop/:id')
   async deleteShopItem(@Param('id', ParseUUIDPipe) id: string) {
     await this.adminService.deleteShopItem(id);

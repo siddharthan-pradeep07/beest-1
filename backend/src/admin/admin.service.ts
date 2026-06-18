@@ -1,6 +1,7 @@
 import {
   Injectable,
   BadRequestException,
+  ForbiddenException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
@@ -40,6 +41,12 @@ const VALID_PERMS = [
   'Super Admin',
   'Banned',
 ] as const;
+
+// Roles only a Super Admin may grant, or act upon (ban / change perms). A
+// Fulfiller can moderate regular builders and promote them to Helper/Reviewer/
+// Fraud Reviewer, but must not be able to mint peers (Fulfiller) or escalate to
+// Super Admin — nor strip/ban an existing Fulfiller or Super Admin.
+const ELEVATED_PERMS = ['Fulfiller', 'Super Admin'];
 
 @Injectable()
 export class AdminService {
@@ -373,9 +380,23 @@ export class AdminService {
     return { success: true };
   }
 
-  async banUser(userId: string, adminId?: string): Promise<void> {
+  async banUser(
+    userId: string,
+    adminId?: string,
+    requesterIsSuperAdmin = true,
+  ): Promise<void> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
+
+    // Fulfillers may ban regular builders but not other Fulfillers or Super Admins.
+    if (!requesterIsSuperAdmin) {
+      const targetPerms = await this.rsvpService.getPerms(user.email);
+      if (targetPerms && ELEVATED_PERMS.includes(targetPerms)) {
+        throw new ForbiddenException(
+          'Only Super Admins can ban a Fulfiller or Super Admin.',
+        );
+      }
+    }
 
     // 1. Update Airtable perms to Banned
     await this.rsvpService.updatePerms(user.email, 'Banned');
@@ -518,15 +539,43 @@ export class AdminService {
     return { pipes: next };
   }
 
-  async updatePerms(userId: string, perms: string, adminId?: string): Promise<void> {
+  async updatePerms(
+    userId: string,
+    perms: string,
+    adminId?: string,
+    requesterIsSuperAdmin = true,
+  ): Promise<void> {
     if (!VALID_PERMS.includes(perms as any)) {
       throw new BadRequestException(
         `Invalid perms value. Must be one of: ${VALID_PERMS.join(', ')}`,
       );
     }
 
+    // Setting perms to "Banned" must run the full ban flow (revoke sessions,
+    // clear review/audit queues, refund pending orders) — never just flip the
+    // Airtable status. banUser also enforces the same elevated-target guard.
+    if (perms === 'Banned') {
+      return this.banUser(userId, adminId, requesterIsSuperAdmin);
+    }
+
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
+
+    // Fulfillers may promote builders, but not grant Fulfiller/Super Admin, nor
+    // alter the perms of someone who already holds one of those roles.
+    if (!requesterIsSuperAdmin) {
+      if (ELEVATED_PERMS.includes(perms)) {
+        throw new ForbiddenException(
+          'Only Super Admins can grant the Fulfiller or Super Admin role.',
+        );
+      }
+      const currentPerms = await this.rsvpService.getPerms(user.email);
+      if (currentPerms && ELEVATED_PERMS.includes(currentPerms)) {
+        throw new ForbiddenException(
+          'Only Super Admins can change the perms of a Fulfiller or Super Admin.',
+        );
+      }
+    }
 
     await this.rsvpService.updatePerms(user.email, perms);
 

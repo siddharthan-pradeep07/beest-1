@@ -11,7 +11,8 @@ import { RsvpService } from '../rsvp/rsvp.service';
 const FULFILLER_ROLES = ['Super Admin', 'Fulfiller'];
 
 /**
- * Guard for the fulfilment (orders) routes. Allows Super Admin and Fulfiller.
+ * Guard for routes a Fulfiller may use — orders/fulfilment plus the shop, news,
+ * and stats management sections. Allows Super Admin and Fulfiller.
  * Checks Airtable on every request — no caching, so revocations are instant.
  */
 @Injectable()
