@@ -38,6 +38,26 @@
 		displayDate: string;
 	}
 
+	interface MyClaimItem {
+		id: string;
+		name: string;
+		status: string;
+		projectType: string;
+		claimedAt: string;
+		expiresAt: string;
+	}
+
+	let myClaims: MyClaimItem[] = $state([]);
+	let myClaimsLoading = $state(false);
+
+	// Display labels for a user's stated intent (why they're here).
+	const INTENT_LABELS: Record<string, string> = {
+		Hackathon: 'Hackathon',
+		Shop: 'Shop',
+		Browsing: 'Browsing',
+		Both: 'Hackathon + Shop',
+	};
+
 	// Fulfiller is reviewer-tier for the tab layout (Projects + Leaderboard, none
 	// of the Super-Admin-only tabs), but additionally gets the Fulfillment tab via
 	// canFulfill below. It has no audit access.
@@ -163,8 +183,11 @@
 		aiUse: string | null;
 		createdAt: string;
 		updatedAt: string;
-		user: { id: string; name: string | null; slackId: string | null; reviewerUserNote: string | null; watchlisted: boolean; coolBuilder: boolean };
+		user: { id: string; name: string | null; slackId: string | null; reviewerUserNote: string | null; watchlisted: boolean; coolBuilder: boolean; intent: string | null };
 		latestSubmission: { id: string; changeDescription: string | null; minHoursConfirmed: boolean; reviewerNote: string | null; status: string; createdAt: string } | null;
+		claimedByReviewerId: string | null;
+		claimedByReviewerName: string | null;
+		claimedAt: string | null;
 	}
 
 	interface StatusCounts {
@@ -180,11 +203,16 @@
 	let projectStatusFilter = $state(data.role === 'Super Admin' ? '' : 'unreviewed');
 	let projectTypeFilter = $state('');
 	let projectSearch = $state('');
-	// Queue ordering: 'wait' = longest in the wait queue first (oldest), 'hours' =
-	// largest Hackatime hours first. projectHours is a projectId→hours map fetched
-	// from the backend (unreviewed set) so we can sort without per-project fetches.
-	let projectSort = $state<'wait' | 'hours'>('wait');
+	// Queue ordering: 'wait' = longest in the wait queue first (oldest), 'newest' =
+	// most recently created first, 'hours' = largest Hackatime hours first.
+	// projectHours is a projectId→hours map fetched from the backend (unreviewed
+	// set) so we can sort by hours without per-project fetches.
+	let projectSort = $state<'wait' | 'newest' | 'hours'>('wait');
 	let projectHours = $state<Record<string, number>>({});
+	// Filter the queue to a single user intent (why the builder is here).
+	let projectIntentFilter = $state('');
+	// Slide-over panel listing the current reviewer's claimed projects.
+	let claimsDrawerOpen = $state(false);
 	// Deep-linked project id (?project=…) to open once the list has loaded, so the
 	// selection is shareable.
 	let pendingDeepLinkProjectId = $state<string | null>(null);
@@ -667,6 +695,9 @@
 		if (projectTypeFilter) {
 			result = result.filter(p => p.projectType === projectTypeFilter);
 		}
+		if (projectIntentFilter) {
+			result = result.filter(p => p.user.intent === projectIntentFilter);
+		}
 		if (projectSearch.trim()) {
 			const q = projectSearch.trim().toLowerCase();
 			result = result.filter(p =>
@@ -680,6 +711,9 @@
 		if (projectSort === 'hours') {
 			// Largest hours first; projects with no known hours sink to the bottom.
 			sorted.sort((a, b) => (projectHours[b.id] ?? -1) - (projectHours[a.id] ?? -1));
+		} else if (projectSort === 'newest') {
+			// Most recently created first.
+			sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 		} else {
 			// Longest in the wait queue first = oldest createdAt first.
 			sorted.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
@@ -1182,6 +1216,63 @@
 		} finally {
 			projectsLoading = false;
 		}
+		loadMyClaims();
+	}
+
+	// Projects the current reviewer has claimed (for the "My Claims" drawer).
+	async function loadMyClaims() {
+		myClaimsLoading = true;
+		try {
+			const res = await fetch('/api/admin/projects/my-claims');
+			if (res.ok) myClaims = await res.json();
+		} finally {
+			myClaimsLoading = false;
+		}
+	}
+
+	// Claim a project so other reviewers know it's being looked at. Returns false
+	// (and alerts) when someone else already holds an active claim.
+	async function claimProject(projectId: string): Promise<boolean> {
+		const res = await fetch(`/api/admin/projects/${projectId}/claim`, { method: 'POST' });
+		const body = await res.json().catch(() => ({}));
+		if (!body.success) {
+			alert(`Already claimed by ${body.claimedBy ?? 'another reviewer'}`);
+			return false;
+		}
+		const idx = allProjects.findIndex((p) => p.id === projectId);
+		if (idx !== -1) {
+			allProjects[idx] = {
+				...allProjects[idx],
+				claimedByReviewerId: data.user.uid,
+				claimedByReviewerName: body.reviewerName,
+				claimedAt: new Date().toISOString(),
+			};
+		}
+		loadMyClaims();
+		return true;
+	}
+
+	async function releaseProjectClaim(projectId: string) {
+		await fetch(`/api/admin/projects/${projectId}/claim`, { method: 'DELETE' });
+		const idx = allProjects.findIndex((p) => p.id === projectId);
+		if (idx !== -1) {
+			allProjects[idx] = {
+				...allProjects[idx],
+				claimedByReviewerId: null,
+				claimedByReviewerName: null,
+				claimedAt: null,
+			};
+		}
+		loadMyClaims();
+	}
+
+	// Human-readable "in 3h 20m" until a claim expires.
+	function formatTimeRemaining(expiresAt: string): string {
+		const ms = new Date(expiresAt).getTime() - Date.now();
+		if (ms <= 0) return 'expired';
+		const h = Math.floor(ms / 3_600_000);
+		const m = Math.floor((ms % 3_600_000) / 60_000);
+		return h > 0 ? `in ${h}h ${m}m` : `in ${m}m`;
 	}
 
 	// Per-project Hackatime hours (unreviewed set) used by the "Most hours" sort.
@@ -1665,6 +1756,14 @@
 		<h1>{isReviewer ? 'Review Panel' : 'Admin Panel'}</h1>
 		<div style="display:flex;align-items:center;gap:0.75rem;">
 			<button class="theme-toggle" onclick={() => lightMode = !lightMode}>{lightMode ? 'Dark' : 'Light'}</button>
+			{#if isReviewer || isSuperAdmin}
+				<button class="claims-drawer-btn" onclick={() => { claimsDrawerOpen = true; loadMyClaims(); }}>
+					My Claims
+					{#if myClaims.length > 0}
+						<span class="claims-drawer-count">{myClaims.length}</span>
+					{/if}
+				</button>
+			{/if}
 			<span class="admin-user">Logged in as {data.user.name}</span>
 		</div>
 	</header>
@@ -2167,7 +2266,7 @@
 							{#each filteredFulfillment as order}
 								{@const detail = orderDetails[order.id]}
 								{@const isOpen = expandedOrderId === order.id}
-								<tr class:fulfilled={order.status === 'fulfilled'} class:order-row={true} class:order-row-open={isOpen} onclick={() => toggleOrderRow(order.id)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleOrderRow(order.id); } }} tabindex="0" role="button" aria-expanded={isOpen}>
+								<tr class:fulfilled={order.status === 'fulfilled'} class:order-row={true} class:order-row-open={isOpen} onclick={() => toggleOrderRow(order.id)} onkeydown={(e) => { const tag = (e.target as HTMLElement).tagName; if ((e.key === 'Enter' || e.key === ' ') && tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') { e.preventDefault(); toggleOrderRow(order.id); } }} tabindex="0" role="button" aria-expanded={isOpen}>
 									<td><span class="order-row-toggle" aria-hidden="true">{isOpen ? '▾' : '▸'}</span> {order.itemName}</td>
 									<td>{order.userName}{order.userEmail ? ` (${order.userEmail})` : ''}</td>
 									<td>{order.quantity}</td>
@@ -2433,8 +2532,16 @@
 							<option value={t}>{t}</option>
 						{/each}
 					</select>
+					<select bind:value={projectIntentFilter} class="type-filter-select" title="Filter by intent">
+						<option value="">All Intents</option>
+						<option value="Hackathon">Hackathon</option>
+						<option value="Shop">Shop</option>
+						<option value="Both">Hackathon + Shop</option>
+						<option value="Browsing">Browsing</option>
+					</select>
 					<select bind:value={projectSort} class="type-filter-select" title="Sort order">
 						<option value="wait">Longest in queue</option>
+						<option value="newest">Newest first</option>
 						<option value="hours">Most hours</option>
 					</select>
 				</div>
@@ -2463,7 +2570,13 @@
 											{isSuperAdmin ? (project.user.name ?? '—') : (project.user.slackId ?? '—')}
 											{#if project.user.watchlisted}<span class="marker marker-watch marker-sm" title="Watchlisted">W</span>{:else if project.user.coolBuilder}<span class="marker marker-cool marker-sm" title="Cool builder">★</span>{/if}
 											{#if projectHours[project.id] != null}<span class="ht-hours" title="Hackatime hours logged">{projectHours[project.id]}h</span>{/if}
+											{#if project.user.intent}<span class="user-intent-badge user-intent-badge--sm">{INTENT_LABELS[project.user.intent] ?? project.user.intent}</span>{/if}
 											<span class="badge badge-{project.status} badge-sm">{project.status}</span>
+											{#if project.claimedByReviewerId && project.claimedByReviewerId !== data.user.uid}
+												<span class="claim-badge">Claimed by {project.claimedByReviewerName ?? 'someone'}</span>
+											{:else if project.claimedByReviewerId === data.user.uid}
+												<span class="claim-badge claim-badge--mine">Claimed by you</span>
+											{/if}
 										</span>
 									</button>
 								{/each}
@@ -2498,6 +2611,32 @@
 											</span>
 											<span>Update: <strong>{selectedProject.isUpdate ? 'Yes' : 'No'}</strong></span>
 											<span>Created: <strong>{formatDate(selectedProject.createdAt)}</strong></span>
+											{#if selectedProject.user.intent}
+												<span>Intent: <span class="user-intent-badge">{INTENT_LABELS[selectedProject.user.intent] ?? selectedProject.user.intent}</span></span>
+											{/if}
+										</div>
+
+										<div class="proj-claim-bar">
+											{#if selectedProject.claimedByReviewerId === data.user.uid}
+												<span class="claim-status claim-status--mine">
+													Claimed by you{#if selectedProject.claimedAt} · expires {formatTimeRemaining(new Date(new Date(selectedProject.claimedAt).getTime() + 24 * 3600 * 1000).toISOString())}{/if}
+												</span>
+												<button class="btn-release-claim" onclick={() => releaseProjectClaim(selectedProject.id)}>
+													Release Claim
+												</button>
+											{:else if selectedProject.claimedByReviewerId}
+												<span class="claim-status claim-status--other">
+													Claimed by {selectedProject.claimedByReviewerName ?? 'another reviewer'}
+												</span>
+												<button class="btn-claim btn-claim--override" onclick={() => claimProject(selectedProject.id)}>
+													Claim Anyway
+												</button>
+											{:else}
+												<span class="claim-status claim-status--free">Unclaimed</span>
+												<button class="btn-claim" onclick={() => claimProject(selectedProject.id)}>
+													Claim Project
+												</button>
+											{/if}
 										</div>
 
 										<div class="marker-controls">
@@ -3011,6 +3150,54 @@
 		{/if}
 	</main>
 </div>
+
+{#if claimsDrawerOpen}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="drawer-backdrop" onclick={() => claimsDrawerOpen = false}></div>
+	<aside class="claims-drawer">
+		<div class="claims-drawer-header">
+			<h2>My Claimed Projects</h2>
+			<button class="claims-drawer-close" onclick={() => claimsDrawerOpen = false}>✕</button>
+		</div>
+		{#if myClaimsLoading && myClaims.length === 0}
+			<p class="claims-drawer-empty">Loading…</p>
+		{:else if myClaims.length === 0}
+			<p class="claims-drawer-empty">You haven't claimed any projects yet.</p>
+		{:else}
+			<ul class="claims-drawer-list">
+				{#each myClaims as claim}
+					<li class="claims-drawer-item">
+						<div class="claims-drawer-item-top">
+							<span class="claims-drawer-name">{claim.name}</span>
+							<span class="badge badge-{claim.status} badge-sm">{claim.status}</span>
+						</div>
+						<div class="claims-drawer-item-meta">
+							<span class="claims-drawer-type">{claim.projectType}</span>
+							<span class="claims-drawer-expires"
+								class:claims-drawer-expires--soon={new Date(claim.expiresAt).getTime() - Date.now() < 2 * 3_600_000}>
+								Expires {formatTimeRemaining(claim.expiresAt)}
+							</span>
+						</div>
+						<div class="claims-drawer-item-actions">
+							<button class="claims-drawer-go"
+								onclick={() => { claimsDrawerOpen = false; selectProject(claim.id); }}>
+								Go to project →
+							</button>
+							<button class="claims-drawer-release"
+								onclick={() => releaseProjectClaim(claim.id)}>
+								Release
+							</button>
+						</div>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+		<div class="claims-drawer-footer">
+			<p class="claims-drawer-hint">Claims expire after 24 hours of inactivity.</p>
+		</div>
+	</aside>
+{/if}
 
 <svelte:window onkeydown={onDevlogLightboxKey} />
 
@@ -3768,6 +3955,192 @@
 	.marker-btn:disabled { opacity: 0.5; cursor: default; }
 	.marker-err { color: var(--reject, #e23); font-size: 0.78rem; }
 
+	/* ── Project claims + intent (PR #37) ── */
+	.claim-badge {
+		display: inline-block;
+		font-size: 0.6rem;
+		font-weight: 600;
+		padding: 0.1rem 0.4rem;
+		border-radius: 3px;
+		background: rgba(251, 191, 36, 0.15);
+		color: #d97706;
+		border: 1px solid rgba(251, 191, 36, 0.4);
+	}
+	.claim-badge--mine {
+		background: rgba(59, 130, 246, 0.12);
+		color: #3b82f6;
+		border-color: rgba(59, 130, 246, 0.35);
+	}
+
+	.user-intent-badge {
+		display: inline-block;
+		font-size: 11px;
+		padding: 2px 7px;
+		border-radius: 10px;
+		background: rgba(139, 92, 246, 0.15);
+		color: #a78bfa;
+		border: 1px solid rgba(139, 92, 246, 0.35);
+		font-weight: 600;
+	}
+	.user-intent-badge--sm {
+		font-size: 10px;
+		padding: 1px 5px;
+	}
+
+	.claims-drawer-btn {
+		position: relative;
+		padding: 6px 14px;
+		border-radius: 6px;
+		border: 1px solid #555;
+		background: transparent;
+		color: #e0e0e0;
+		cursor: pointer;
+		font-size: 13px;
+		font-family: inherit;
+	}
+	.claims-drawer-count {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		background: #a78bfa;
+		color: #fff;
+		font-size: 11px;
+		font-weight: 700;
+		margin-left: 6px;
+	}
+	.drawer-backdrop {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.4);
+		z-index: 200;
+	}
+	.claims-drawer {
+		position: fixed;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		width: 380px;
+		background: #1a1a1a;
+		border-left: 1px solid #333;
+		z-index: 201;
+		display: flex;
+		flex-direction: column;
+		overflow-y: auto;
+	}
+	.claims-drawer-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 20px 24px;
+		border-bottom: 1px solid #333;
+		flex-shrink: 0;
+	}
+	.claims-drawer-header h2 { font-size: 16px; font-weight: 700; margin: 0; }
+	.claims-drawer-close {
+		background: none;
+		border: none;
+		color: #888;
+		cursor: pointer;
+		font-size: 18px;
+		line-height: 1;
+	}
+	.claims-drawer-list { list-style: none; padding: 0; margin: 0; }
+	.claims-drawer-item {
+		padding: 16px 24px;
+		border-bottom: 1px solid #2a2a2a;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.claims-drawer-item-top { display: flex; align-items: center; gap: 8px; }
+	.claims-drawer-name {
+		font-weight: 600;
+		font-size: 14px;
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.claims-drawer-item-meta {
+		display: flex;
+		justify-content: space-between;
+		font-size: 12px;
+		color: #888;
+	}
+	.claims-drawer-expires--soon { color: #f59e0b !important; }
+	.claims-drawer-item-actions { display: flex; gap: 8px; }
+	.claims-drawer-go {
+		flex: 1;
+		padding: 7px 12px;
+		border-radius: 5px;
+		border: 1px solid #555;
+		background: transparent;
+		color: #e0e0e0;
+		cursor: pointer;
+		font-size: 12px;
+		font-family: inherit;
+	}
+	.claims-drawer-go:hover { border-color: #a78bfa; color: #a78bfa; }
+	.claims-drawer-release {
+		padding: 7px 12px;
+		border-radius: 5px;
+		border: 1px solid #555;
+		background: transparent;
+		color: #888;
+		cursor: pointer;
+		font-size: 12px;
+		font-family: inherit;
+	}
+	.claims-drawer-release:hover { border-color: #ef4444; color: #ef4444; }
+	.claims-drawer-footer { padding: 16px 24px; margin-top: auto; }
+	.claims-drawer-hint { font-size: 12px; color: #555; margin: 0; }
+	.claims-drawer-empty { padding: 32px 24px; color: #666; text-align: center; }
+
+	.proj-claim-bar {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 10px 0;
+		border-top: 1px solid #2a2a2a;
+		margin-top: 8px;
+	}
+	.claim-status { font-size: 13px; flex: 1; }
+	.claim-status--mine { color: #3b82f6; }
+	.claim-status--other { color: #f59e0b; }
+	.claim-status--free { color: #666; }
+	.btn-claim {
+		padding: 7px 16px;
+		border-radius: 6px;
+		border: 1px solid #a78bfa;
+		background: rgba(139, 92, 246, 0.15);
+		color: #a78bfa;
+		cursor: pointer;
+		font-size: 13px;
+		font-weight: 600;
+		font-family: inherit;
+	}
+	.btn-claim:hover { background: rgba(139, 92, 246, 0.3); }
+	.btn-claim--override {
+		border-color: #f59e0b;
+		background: rgba(245, 158, 11, 0.1);
+		color: #f59e0b;
+	}
+	.btn-release-claim {
+		padding: 7px 16px;
+		border-radius: 6px;
+		border: 1px solid #555;
+		background: transparent;
+		color: #888;
+		cursor: pointer;
+		font-size: 13px;
+		font-family: inherit;
+	}
+	.btn-release-claim:hover { border-color: #ef4444; color: #ef4444; }
+
 	.ht-pill {
 		display: inline-block;
 		margin-left: 0.35rem;
@@ -4081,6 +4454,11 @@
 		outline: none;
 		border-color: rgba(255, 180, 180, 0.55);
 		background: rgba(255, 255, 255, 0.09);
+	}
+
+	.quick-reject-select option {
+		background: #1e1e1e;
+		color: #e0e0e0;
 	}
 
 	.admin-shell.light .quick-reject-select {

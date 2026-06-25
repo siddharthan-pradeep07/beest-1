@@ -24,6 +24,7 @@ import { HcaService } from '../hca/hca.service';
 import { fetchWithTimeout } from '../fetch.util';
 import { ProjectAirtableSyncService } from '../projects/project-airtable-sync.service';
 import { SlackService } from '../slack/slack.service';
+import { Cron } from '@nestjs/schedule';
 import { SlackNotifyService } from '../slack/slack-notify.service';
 import {
   reviewApprovedDm,
@@ -59,6 +60,7 @@ export class AdminService {
   ]);
   private readonly hackatimeBaseUrl: string;
   private readonly hackatimeAdminKey: string | undefined;
+  private readonly CLAIM_TTL_MS = 24 * 60 * 60 * 1000;
 
   private cleanReviewerUserNote(note: string | null | undefined): string | null {
     if (note === undefined) return null;
@@ -135,6 +137,23 @@ export class AdminService {
     this.hackatimeAdminKey = this.configService.get('HACKATIME_ADMIN_API_KEY');
     if (!this.hackatimeAdminKey) {
       this.logger.warn('HACKATIME_ADMIN_API_KEY not set — admin Hackatime lookups disabled');
+    }
+  }
+
+  // Release project claims that have gone stale (reviewer claimed but never
+  // decided within the TTL), so they don't sit locked forever.
+  @Cron('0 * * * *', { name: 'expire-stale-project-claim' })
+  async expireStaleProjectClaims(): Promise<void> {
+    if (process.env.NODE_ENV !== 'production') return;
+    const cutoff = new Date(Date.now() - this.CLAIM_TTL_MS);
+    const result = await this.projectRepo
+      .createQueryBuilder()
+      .update()
+      .set({ claimedByReviewerId: null, claimedByReviewerName: null, claimedAt: null })
+      .where('"claimedAt" IS NOT NULL AND "claimedAt" < :cutoff', { cutoff })
+      .execute();
+    if (result.affected) {
+      this.logger.log(`Expired ${result.affected} stale project claim(s)`);
     }
   }
 
@@ -500,6 +519,12 @@ export class AdminService {
     await this.auditLogService.log(project.userId, 'project_reviewed', `Project "${project.name}" was rejected`);
     await this.auditLogService.log(project.userId, 'admin_ban', `Banned via project review of "${project.name}"`);
 
+    await this.projectRepo.update(projectId, {
+      claimedByReviewerId: null,
+      claimedByReviewerName: null,
+      claimedAt: null,
+    });
+
     return { success: true };
   }
 
@@ -679,6 +704,9 @@ export class AdminService {
           aiUse: p.aiUse,
           createdAt: p.createdAt,
           updatedAt: p.updatedAt,
+          claimedByReviewerId: p.claimedByReviewerId,
+          claimedByReviewerName: p.claimedByReviewerName,
+          claimedAt: p.claimedAt,
           user: {
             id: p.user?.id,
             name: isSuperAdmin ? p.user?.name : null,
@@ -686,6 +714,7 @@ export class AdminService {
             reviewerUserNote: p.user?.reviewerUserNote ?? null,
             watchlisted: !!p.user?.watchlisted,
             coolBuilder: !!p.user?.coolBuilder,
+            intent: p.user?.intent ?? null,
           },
           latestSubmission: latestSub ? {
             id: latestSub.id,
@@ -932,7 +961,67 @@ export class AdminService {
         : `Project "${project.name}" received feedback`;
     await this.auditLogService.log(project.userId, 'project_reviewed', label);
 
+    // A decided project no longer needs to be claimed — free it.
+    await this.projectRepo.update(projectId, {
+      claimedByReviewerId: null,
+      claimedByReviewerName: null,
+      claimedAt: null,
+    });
+
     return { success: true };
+  }
+
+  async claimProject(projectId: string, reviewerId: string, reviewerName: string | null) {
+    const project = await this.projectRepo.findOneBy({ id: projectId });
+    if (!project) throw new NotFoundException('Project not found');
+
+    const now = new Date();
+    const isExpired =
+      !project.claimedAt ||
+      now.getTime() - project.claimedAt.getTime() > this.CLAIM_TTL_MS;
+    const isOwnClaim = project.claimedByReviewerId === reviewerId;
+
+    if (project.claimedByReviewerId && !isExpired && !isOwnClaim) {
+      return { success: false, claimedBy: project.claimedByReviewerName };
+    }
+
+    await this.projectRepo.update(projectId, {
+      claimedByReviewerId: reviewerId,
+      claimedByReviewerName: reviewerName,
+      claimedAt: now,
+    });
+    return { success: true, reviewerName };
+  }
+
+  async getMyClaims(reviewerId: string) {
+    const cutoff = new Date(Date.now() - this.CLAIM_TTL_MS);
+    const projects = await this.projectRepo.find({
+      where: { claimedByReviewerId: reviewerId },
+      order: { claimedAt: 'ASC' },
+    });
+    return projects
+      .filter((p) => p.claimedAt && p.claimedAt > cutoff)
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        status: p.status,
+        projectType: p.projectType,
+        claimedAt: p.claimedAt,
+        expiresAt: new Date(p.claimedAt!.getTime() + this.CLAIM_TTL_MS),
+      }));
+  }
+
+  async releaseProjectClaim(projectId: string, reviewerId: string) {
+    const project = await this.projectRepo.findOneBy({ id: projectId });
+    if (!project) return;
+
+    if (project.claimedByReviewerId === reviewerId) {
+      await this.projectRepo.update(projectId, {
+        claimedByReviewerId: null,
+        claimedByReviewerName: null,
+        claimedAt: null,
+      });
+    }
   }
 
   async resyncProjectToAirtable(projectId: string, reviewerId: string) {

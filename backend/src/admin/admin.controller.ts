@@ -244,6 +244,12 @@ export class AdminController {
   }
 
   @UseGuards(ReviewerGuard)
+  @Get('projects/my-claims')
+  getMyClaims(@Req() req: Request) {
+    return this.adminService.getMyClaims((req as any).user?.uid);
+  }
+
+  @UseGuards(ReviewerGuard)
   @Get('projects/:id/hackatime')
   getProjectHackatime(
     @Param('id', ParseUUIDPipe) id: string,
@@ -251,6 +257,20 @@ export class AdminController {
   ) {
     const isSuperAdmin = (req as any).user?.perms === 'Super Admin';
     return this.adminService.getProjectHackatime(id, isSuperAdmin);
+  }
+
+  @UseGuards(ReviewerGuard)
+  @Post('projects/:id/claim')
+  async claimProject(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    const user = (req as any).user;
+    return this.adminService.claimProject(id, user?.uid, user?.name ?? null);
+  }
+
+  @UseGuards(ReviewerGuard)
+  @Delete('projects/:id/claim')
+  async releaseProjectClaim(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    await this.adminService.releaseProjectClaim(id, (req as any).user?.uid);
+    return { success: true };
   }
 
   @UseGuards(ReviewerGuard)
