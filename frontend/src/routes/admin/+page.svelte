@@ -195,10 +195,11 @@
 		unreviewed: number;
 		changes_needed: number;
 		approved: number;
+		rejected: number;
 	}
 
 	let allProjects: ProjectSummary[] = $state([]);
-	let statusCounts: StatusCounts = $state({ unshipped: 0, unreviewed: 0, changes_needed: 0, approved: 0 });
+	let statusCounts: StatusCounts = $state({ unshipped: 0, unreviewed: 0, changes_needed: 0, approved: 0, rejected: 0 });
 	let projectsLoading = $state(false);
 	let projectStatusFilter = $state(data.role === 'Super Admin' ? '' : 'unreviewed');
 	let projectTypeFilter = $state('');
@@ -396,7 +397,7 @@
 		}
 	}
 
-	async function reviewProject(status: 'approved' | 'changes_needed' | 'ban') {
+	async function reviewProject(status: 'approved' | 'changes_needed' | 'rejected' | 'ban') {
 		if (!expandedProjectId || reviewSubmitting) return;
 		reviewSubmitting = true;
 		try {
@@ -2507,7 +2508,7 @@
 				<div class="status-pills">
 					{#if isSuperAdmin}
 						<button class="pill" class:active={projectStatusFilter === ''} onclick={() => projectStatusFilter = ''}>
-							All <span class="pill-count">{statusCounts.unshipped + statusCounts.unreviewed + statusCounts.changes_needed + statusCounts.approved}</span>
+							All <span class="pill-count">{statusCounts.unshipped + statusCounts.unreviewed + statusCounts.changes_needed + statusCounts.approved + statusCounts.rejected}</span>
 						</button>
 						<button class="pill pill-unshipped" class:active={projectStatusFilter === 'unshipped'} onclick={() => projectStatusFilter = projectStatusFilter === 'unshipped' ? '' : 'unshipped'}>
 							Unshipped <span class="pill-count">{statusCounts.unshipped}</span>
@@ -2521,6 +2522,9 @@
 					</button>
 					<button class="pill pill-approved" class:active={projectStatusFilter === 'approved'} onclick={() => projectStatusFilter = projectStatusFilter === 'approved' ? '' : 'approved'}>
 						Approved <span class="pill-count">{statusCounts.approved}</span>
+					</button>
+					<button class="pill pill-rejected" class:active={projectStatusFilter === 'rejected'} onclick={() => projectStatusFilter = projectStatusFilter === 'rejected' ? '' : 'rejected'}>
+						Rejected <span class="pill-count">{statusCounts.rejected}</span>
 					</button>
 				</div>
 
@@ -3023,7 +3027,24 @@
 									<div class="review-actions">
 										<button class="review-btn review-btn-approve" onclick={() => reviewProject('approved')} disabled={reviewSubmitting || !justificationOk}>Approve</button>
 										<button class="review-btn review-btn-reject" onclick={() => reviewProject('changes_needed')} disabled={reviewSubmitting || !userFeedback.trim()}>Reject</button>
+										<button class="review-btn review-btn-hard-reject" onclick={() => { if (confirm('Hard reject this project? The builder will NOT be able to resubmit it (they can still ship other projects).')) reviewProject('rejected'); }} disabled={reviewSubmitting || !userFeedback.trim()} title="Permanently reject this project — it cannot be resubmitted">Hard Reject</button>
 										<button class="review-btn review-btn-ban" onclick={() => { if (confirm('Ban this user and reject their project?')) reviewProject('ban'); }} disabled={reviewSubmitting || !canBan} title={!canBan ? 'Ban requires Super Admin or Fraud Reviewer — flag in internal note and ping Euan' : ''}>Fail &amp; Ban</button>
+									</div>
+								{/if}
+
+								{#if selectedProject.status === 'rejected'}
+									<div class="rejected-panel">
+										<div class="rejected-panel-info">
+											<strong>This project was hard-rejected.</strong>
+											<span>The builder can't resubmit it. Allow resubmission to move it back to “changes needed” so they can edit and ship again.</span>
+										</div>
+										<button
+											class="review-btn review-btn-reopen"
+											onclick={() => { if (confirm('Allow this project to be resubmitted? It moves back to "changes needed" so the builder can edit and ship again.')) reviewProject('changes_needed'); }}
+											disabled={reviewSubmitting}
+										>
+											Allow Resubmission
+										</button>
 									</div>
 								{/if}
 
@@ -3526,6 +3547,7 @@
 	.badge-approved { background: #1e2a3a; color: #5b9bd5; }
 	.badge-unreviewed { background: #3a3520; color: #d5b85b; }
 	.badge-changes_needed { background: #3a2520; color: #d58b5b; }
+	.badge-rejected { background: #3a1a1a; color: #e05555; }
 	.badge-unshipped { background: #2a2a2a; color: #888; }
 
 	.actions {
@@ -3875,6 +3897,9 @@
 
 	.pill-approved { background: #93b4cd; border-color: #aaccdd; color: #fff; }
 	.pill-approved.active { background: #a8c6dd; border-color: #c0ddef; }
+
+	.pill-rejected { background: #c25a5a; border-color: #d47070; color: #fff; }
+	.pill-rejected.active { background: #d06868; border-color: #e08080; }
 
 	.proj-split {
 		display: flex;
@@ -4699,6 +4724,37 @@
 
 	.review-btn-reject {
 		background: #c44040;
+	}
+
+	.review-btn-hard-reject {
+		background: #7a1f1f;
+		border: 2px solid #c44040;
+	}
+
+	.review-btn-reopen {
+		background: #3a6a9a;
+	}
+
+	.rejected-panel {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		margin-top: 1rem;
+		padding: 0.85rem 1rem;
+		border: 1px solid #c44040;
+		border-radius: 8px;
+		background: rgba(196, 64, 64, 0.1);
+	}
+	.rejected-panel-info {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+		font-size: 0.85rem;
+	}
+	.rejected-panel .review-btn-reopen {
+		flex-shrink: 0;
+		padding: 0.5rem 1rem;
 	}
 
 	.review-btn-ban {

@@ -581,6 +581,11 @@ export class ProjectsService {
     if (project.status === 'approved') {
       throw new ForbiddenException('Approved projects cannot be deleted');
     }
+    // A hard-rejected project is terminal — deleting it would let the user
+    // sidestep the rejection by recreating the same project.
+    if (project.status === 'rejected') {
+      throw new ForbiddenException('Rejected projects cannot be deleted');
+    }
 
     const name = project.name;
     await this.projectRepo.remove(project);

@@ -29,6 +29,7 @@ import { SlackNotifyService } from '../slack/slack-notify.service';
 import {
   reviewApprovedDm,
   reviewChangesNeededDm,
+  reviewRejectedDm,
 } from '../slack/slack-notify.templates';
 import { ShopService } from '../shop/shop.service';
 import { getFileHoursForProject } from '../hackatime/hackatime-file-breakdown';
@@ -669,6 +670,7 @@ export class AdminService {
       fraud_pending: 0,
       changes_needed: 0,
       approved: 0,
+      rejected: 0,
     };
 
     // Fetch latest submission for each project in a single query
@@ -872,7 +874,7 @@ export class AdminService {
     //   hours and pipes — only the new resubmission is being rejected, the original approval still stands.
     // - Any other path into changes_needed (never approved): clear overrideHours so a reviewer-set value
     //   on the rejection doesn't bleed into the approved bucket on the next resubmission.
-    if (status === 'changes_needed') {
+    if (status === 'changes_needed' || status === 'rejected') {
       if (previousStatus === 'approved') {
         project.overrideHours = 0;
         if ((project.pipesGranted ?? 0) > 0) {
@@ -926,9 +928,9 @@ export class AdminService {
     await this.reviewRepo.save(review);
 
     // 5. DM the builder about the decision (best-effort; never blocks review).
-    // Only the two reviewer-facing outcomes notify here — 'approved' and
-    // 'changes_needed'. The reviewer name is omitted when hidden from the owner.
-    if (status === 'approved' || status === 'changes_needed') {
+    // The reviewer-facing outcomes notify here — 'approved', 'changes_needed'
+    // and 'rejected' (hard reject). The reviewer name is omitted when hidden.
+    if (status === 'approved' || status === 'changes_needed' || status === 'rejected') {
       const reviewerName = hideReviewerName
         ? null
         : (
@@ -946,7 +948,9 @@ export class AdminService {
       const message =
         status === 'approved'
           ? reviewApprovedDm(dmInput)
-          : reviewChangesNeededDm(dmInput);
+          : status === 'rejected'
+            ? reviewRejectedDm(dmInput)
+            : reviewChangesNeededDm(dmInput);
       await this.slackNotify.dm(
         project.user?.slackId,
         message.text,
@@ -958,7 +962,9 @@ export class AdminService {
     const label =
       status === 'approved'
         ? `Project "${project.name}" was approved by reviewer`
-        : `Project "${project.name}" received feedback`;
+        : status === 'rejected'
+          ? `Project "${project.name}" was rejected`
+          : `Project "${project.name}" received feedback`;
     await this.auditLogService.log(project.userId, 'project_reviewed', label);
 
     // A decided project no longer needs to be claimed — free it.

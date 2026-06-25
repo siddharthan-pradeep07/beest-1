@@ -74,7 +74,7 @@
   let editingProject = $state<any>(null);
   type ProjectReview = {
     id: string;
-    status: 'approved' | 'changes_needed';
+    status: 'approved' | 'changes_needed' | 'rejected';
     feedback: string | null;
     reviewerName: string | null;
     hideReviewerName?: boolean;
@@ -1584,7 +1584,7 @@
             {#each editingProjectReviews as review}
               <div class="review-feedback-card review-feedback-{review.status}">
                 <div class="review-feedback-header">
-                  <span class="review-feedback-badge {review.status}">{review.status === 'changes_needed' ? 'Changes Needed' : 'Approved'}</span>
+                  <span class="review-feedback-badge {review.status}">{review.status === 'changes_needed' ? 'Changes Needed' : review.status === 'rejected' ? 'Rejected' : 'Approved'}</span>
                   {#if review.hideReviewerName}
                     <span class="review-feedback-reviewer">by a reviewer</span>
                   {:else if review.reviewerName}
@@ -1676,7 +1676,7 @@
           {#each editingProjectReviews as review}
             <div class="review-feedback-card review-feedback-{review.status}">
               <div class="review-feedback-header">
-                <span class="review-feedback-badge {review.status}">{review.status === 'changes_needed' ? 'Changes Needed' : 'Approved'}</span>
+                <span class="review-feedback-badge {review.status}">{review.status === 'changes_needed' ? 'Changes Needed' : review.status === 'rejected' ? 'Rejected' : 'Approved'}</span>
                 {#if review.hideReviewerName}
                   <span class="review-feedback-reviewer">by a reviewer</span>
                 {:else if review.reviewerName}
@@ -1891,15 +1891,21 @@
           <div class="in-review-notice">
             <p class="in-review-text">This project has been reviewed and is awaiting fraud checks. You'll be notified once the fraud team finishes their review.</p>
           </div>
+        {:else if editingProject?.status === 'rejected'}
+          <div class="in-review-notice in-review-notice--rejected">
+            <p class="in-review-text">This project was rejected and can't be resubmitted. You're welcome to build and ship a different project.</p>
+          </div>
         {/if}
         <div class="form-actions">
-          {#if editingProject && editingProject.status !== 'approved'}
+          {#if editingProject && editingProject.status !== 'approved' && editingProject.status !== 'rejected'}
             <button class="form-btn-delete" onclick={() => deleteProject(editingProject.id)}>Delete</button>
           {/if}
-          <button class="form-btn-submit" disabled={!canSubmit || editingProject?.status === 'unreviewed'} onclick={submitProject}>
-            {#if submitting}{editingProject ? 'Saving...' : 'Creating...'}{:else}{editingProject ? 'Save Changes' : 'Create Project'}{/if}
-          </button>
-          {#if editingProject && editingProject.status !== 'unreviewed'}
+          {#if editingProject?.status !== 'rejected'}
+            <button class="form-btn-submit" disabled={!canSubmit || editingProject?.status === 'unreviewed'} onclick={submitProject}>
+              {#if submitting}{editingProject ? 'Saving...' : 'Creating...'}{:else}{editingProject ? 'Save Changes' : 'Create Project'}{/if}
+            </button>
+          {/if}
+          {#if editingProject && editingProject.status !== 'unreviewed' && editingProject.status !== 'rejected'}
               <div class="submit-review-wrap">
                 <button
                   class="form-btn-review"
@@ -2183,7 +2189,7 @@
                   <div class="project-header-row">
                     <h3 class="project-name">{project.name}</h3>
                     <span class="project-type-badge">{project.projectType}</span>
-                    <span class="project-status-badge {project.status === 'fraud_pending' ? 'unreviewed' : project.status}">{project.status === 'changes_needed' ? 'Changes Needed' : project.status === 'fraud_pending' ? 'In Review' : project.status}</span>
+                    <span class="project-status-badge {project.status === 'fraud_pending' ? 'unreviewed' : project.status}">{project.status === 'changes_needed' ? 'Changes Needed' : project.status === 'fraud_pending' ? 'In Review' : project.status === 'rejected' ? 'Rejected' : project.status}</span>
                   </div>
                   <p class="project-desc">{project.description}</p>
                   <div class="project-links">
@@ -4200,6 +4206,11 @@
     word-wrap: break-word;
     width: 100%;
     margin-bottom: 8px;
+  }
+
+  .in-review-notice--rejected {
+    background: rgba(179, 74, 74, 0.15);
+    border-color: #b34a4a;
   }
 
   .in-review-text {
@@ -6776,6 +6787,10 @@
   .project-status-badge.approved {
     background: #93b4cd;
     color: #635a4e;
+  }
+
+  .project-status-badge.rejected {
+    background: #b34a4a;
   }
 
   .project-desc {

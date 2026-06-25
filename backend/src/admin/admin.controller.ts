@@ -289,7 +289,7 @@ export class AdminController {
     },
     @Req() req: Request,
   ) {
-    const validStatuses = ['approved', 'changes_needed', 'ban'];
+    const validStatuses = ['approved', 'changes_needed', 'rejected', 'ban'];
     if (!body.status || !validStatuses.includes(body.status)) {
       throw new BadRequestException(`status must be one of: ${validStatuses.join(', ')}`);
     }
