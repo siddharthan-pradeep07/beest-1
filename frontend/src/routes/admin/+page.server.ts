@@ -32,5 +32,9 @@ export const load: PageServerLoad = async ({ cookies }) => {
 		}
 	}
 
-	return { user, role };
+	// Base URL of the private audit service. Only super admins use the inline
+	// "View in audit" embed, but it's cheap to always hand down. No trailing slash.
+	const auditSvcUrl = (env.AUDIT_SVC_URL ?? 'http://localhost:5174').replace(/\/+$/, '');
+
+	return { user, role, auditSvcUrl };
 };

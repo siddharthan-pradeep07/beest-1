@@ -83,6 +83,9 @@ export class AdminService {
       decisionCount: number;
       predictedApprovedHours: number;
     };
+    // Per-project Hackatime hours (projectId → logged hours) for the same
+    // unreviewed set, so the Review Panel can sort by hours off one fan-out.
+    projectHours: Record<string, number>;
     timestamp: number;
   } | null = null;
   private readonly UNREVIEWED_HOURS_CACHE_TTL = 60 * 1000;
@@ -1654,7 +1657,7 @@ export class AdminService {
         decisionCount,
         predictedApprovedHours: 0,
       };
-      this.unreviewedHoursCache = { payload, timestamp: Date.now() };
+      this.unreviewedHoursCache = { payload, projectHours: {}, timestamp: Date.now() };
       return payload;
     }
 
@@ -1727,8 +1730,10 @@ export class AdminService {
     }
 
     let totalHours = 0;
+    const projectHours: Record<string, number> = {};
     for (const p of projects) {
       const hackatimeHours = (secondsByProject.get(p.id) ?? 0) / 3600;
+      projectHours[p.id] = Math.round(hackatimeHours * 10) / 10;
       const newHours = Math.max(0, hackatimeHours - (p.overrideHours ?? 0));
       totalHours += newHours;
     }
@@ -1742,8 +1747,18 @@ export class AdminService {
       decisionCount,
       predictedApprovedHours,
     };
-    this.unreviewedHoursCache = { payload, timestamp: Date.now() };
+    this.unreviewedHoursCache = { payload, projectHours, timestamp: Date.now() };
     return payload;
+  }
+
+  /**
+   * Per-project Hackatime hours (projectId → logged hours) for unreviewed
+   * projects. Shares the unreviewed-hours fan-out + 60s cache, so the Review
+   * Panel can offer a "largest hours first" sort without its own fan-out.
+   */
+  async getUnreviewedProjectHours(): Promise<Record<string, number>> {
+    await this.getUnreviewedHours();
+    return this.unreviewedHoursCache?.projectHours ?? {};
   }
   // ── Daily Active Users ──
 

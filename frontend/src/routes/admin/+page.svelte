@@ -5,7 +5,8 @@
 	import ProjectHourBreakdown from '$lib/components/ProjectHourBreakdown.svelte';
 	import TimelapsePanel from '$lib/components/admin/TimelapsePanel.svelte';
 	import CardGrantModal from '$lib/components/admin/CardGrantModal.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
+	import { replaceState } from '$app/navigation';
 
 	let { data } = $props();
 	interface UserSummary {
@@ -179,6 +180,32 @@
 	let projectStatusFilter = $state(data.role === 'Super Admin' ? '' : 'unreviewed');
 	let projectTypeFilter = $state('');
 	let projectSearch = $state('');
+	// Queue ordering: 'wait' = longest in the wait queue first (oldest), 'hours' =
+	// largest Hackatime hours first. projectHours is a projectId→hours map fetched
+	// from the backend (unreviewed set) so we can sort without per-project fetches.
+	let projectSort = $state<'wait' | 'hours'>('wait');
+	let projectHours = $state<Record<string, number>>({});
+	// Deep-linked project id (?project=…) to open once the list has loaded, so the
+	// selection is shareable.
+	let pendingDeepLinkProjectId = $state<string | null>(null);
+
+	// Inline "View in audit" embed (super admin only). Reuses the audit service's
+	// /panel embed: we mint a single-use ctx server-side and POST it into a named
+	// iframe so the id never rides in a URL (mirrors the second-pass panel).
+	const auditSvcUrl = $derived(((data.auditSvcUrl as string | undefined) ?? '').replace(/\/+$/, ''));
+	const auditSvcOrigin = $derived.by(() => {
+		try {
+			return new URL(auditSvcUrl).origin;
+		} catch {
+			return '';
+		}
+	});
+	const AUDIT_FRAME_NAME = 'beest-review-audit-embed';
+	let auditFrameEl = $state<HTMLIFrameElement | null>(null);
+	let showAuditEmbed = $state(false);
+	let auditEmbedProjectId = $state<string | null>(null);
+	let auditEmbedError = $state<string | null>(null);
+	let auditEmbedHeight = $state(560);
 
 	// Hackatime detail expansion
 	interface HackatimeDetail {
@@ -561,8 +588,12 @@
 			lastQuickRejectInternalNote = '';
 			hideReviewerName = false;
 			projectDevlogs = [];
+			closeAuditEmbed();
+			syncProjectUrl(null);
 			return;
 		}
+		closeAuditEmbed();
+		syncProjectUrl(projectId);
 		expandedProjectId = projectId;
 		projScreenIdx = 0;
 		hackatimeData = null;
@@ -644,7 +675,16 @@
 				(p.user.slackId?.toLowerCase().includes(q))
 			);
 		}
-		return result;
+		// Copy before sorting so we never mutate allProjects in place.
+		const sorted = [...result];
+		if (projectSort === 'hours') {
+			// Largest hours first; projects with no known hours sink to the bottom.
+			sorted.sort((a, b) => (projectHours[b.id] ?? -1) - (projectHours[a.id] ?? -1));
+		} else {
+			// Longest in the wait queue first = oldest createdAt first.
+			sorted.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+		}
+		return sorted;
 	});
 
 	function moveProject(delta: number) {
@@ -763,6 +803,44 @@
 	onMount(() => {
 		window.addEventListener('keydown', onReviewShortcut);
 		return () => window.removeEventListener('keydown', onReviewShortcut);
+	});
+
+	// Honour a ?project=… deep link: jump to the Projects tab and remember the id;
+	// the effect below opens it once the list has loaded.
+	onMount(() => {
+		const pid = new URLSearchParams(window.location.search).get('project');
+		if (pid) {
+			pendingDeepLinkProjectId = pid;
+			activeTab = 'projects';
+		}
+	});
+
+	let deepLinkHandled = false;
+	$effect(() => {
+		if (deepLinkHandled || activeTab !== 'projects' || projectsLoading) return;
+		const target = pendingDeepLinkProjectId;
+		if (!target) return;
+		if (allProjects.some((p) => p.id === target)) {
+			deepLinkHandled = true;
+			if (expandedProjectId !== target) selectProject(target);
+		} else if (allProjects.length > 0) {
+			// List loaded but the id isn't visible to this reviewer — give up quietly.
+			deepLinkHandled = true;
+		}
+	});
+
+	// Resize messages from the audit embed (origin-checked).
+	onMount(() => {
+		function onMessage(e: MessageEvent) {
+			if (!auditSvcOrigin || e.origin !== auditSvcOrigin) return;
+			const d = e.data;
+			if (!d || d.source !== 'beest-audit') return;
+			if (d.type === 'resize' && typeof d.height === 'number') {
+				auditEmbedHeight = Math.max(200, Math.min(4000, Math.ceil(d.height)));
+			}
+		}
+		window.addEventListener('message', onMessage);
+		return () => window.removeEventListener('message', onMessage);
 	});
 
 	const totalUsers = $derived(users.length);
@@ -1104,6 +1182,77 @@
 		} finally {
 			projectsLoading = false;
 		}
+	}
+
+	// Per-project Hackatime hours (unreviewed set) used by the "Most hours" sort.
+	// Cheap + cached server-side; failures just leave the map empty.
+	async function loadProjectHours() {
+		try {
+			const res = await fetch('/api/admin/projects/hours');
+			if (res.ok) projectHours = await res.json();
+		} catch {
+			/* sort just falls back to no-hours ordering */
+		}
+	}
+
+	// Reflect the open project in the URL (?project=…) so the view is shareable.
+	function syncProjectUrl(projectId: string | null) {
+		if (typeof window === 'undefined') return;
+		const url = new URL(window.location.href);
+		if (projectId) url.searchParams.set('project', projectId);
+		else url.searchParams.delete('project');
+		try {
+			replaceState(url, {});
+		} catch {
+			history.replaceState(history.state, '', url);
+		}
+	}
+
+	function closeAuditEmbed() {
+		showAuditEmbed = false;
+		auditEmbedProjectId = null;
+		auditEmbedError = null;
+		auditEmbedHeight = 560;
+	}
+
+	// Mint a single-use audit context for the selected project and POST it into a
+	// named iframe (ctx in the body, never the URL — same as the second-pass panel).
+	async function openAuditEmbed() {
+		const pid = expandedProjectId;
+		if (!pid || !auditSvcUrl) return;
+		auditEmbedError = null;
+		auditEmbedProjectId = pid;
+		showAuditEmbed = true;
+		await tick();
+		try {
+			const res = await fetch(`/api/admin/audit/${pid}/iframe-context`, { method: 'POST' });
+			const j = await res.json().catch(() => ({}));
+			if (!res.ok || !j.ctx) throw new Error(j.message || j.error || `HTTP ${res.status}`);
+			submitCtxToAuditFrame(j.ctx);
+		} catch (e) {
+			auditEmbedError = e instanceof Error ? e.message : String(e);
+		}
+	}
+
+	function submitCtxToAuditFrame(ctx: string) {
+		if (!auditFrameEl) return;
+		const form = document.createElement('form');
+		form.method = 'POST';
+		form.action = `${auditSvcUrl}/panel`;
+		form.target = AUDIT_FRAME_NAME;
+		const field = (name: string, value: string) => {
+			const input = document.createElement('input');
+			input.type = 'hidden';
+			input.name = name;
+			input.value = value;
+			form.appendChild(input);
+		};
+		field('ctx', ctx);
+		field('light', lightMode ? '1' : '0');
+		field('dys', '0');
+		document.body.appendChild(form);
+		form.submit();
+		form.remove();
 	}
 
 	// Review leaderboard state
@@ -1504,7 +1653,7 @@
 		if (activeTab === 'stats' && isSuperAdmin) { loadUsers(); loadUnreviewedHours(); }
 		if (activeTab === 'news') loadNews();
 		if (activeTab === 'events') { loadEvents(); if (eventHostUsers.length === 0) loadEventHostUsers(); }
-		if (activeTab === 'projects') loadProjects();
+		if (activeTab === 'projects') { loadProjects(); loadProjectHours(); }
 		if (activeTab === 'shop') loadShop();
 		if (activeTab === 'fulfillment') { loadFulfillment(); loadHcbStatus(); }
 		if (activeTab === 'leaderboard') loadLeaderboard();
@@ -2284,6 +2433,10 @@
 							<option value={t}>{t}</option>
 						{/each}
 					</select>
+					<select bind:value={projectSort} class="type-filter-select" title="Sort order">
+						<option value="wait">Longest in queue</option>
+						<option value="hours">Most hours</option>
+					</select>
 				</div>
 
 				{#if projectsLoading}
@@ -2309,6 +2462,7 @@
 										<span class="proj-sidebar-meta">
 											{isSuperAdmin ? (project.user.name ?? '—') : (project.user.slackId ?? '—')}
 											{#if project.user.watchlisted}<span class="marker marker-watch marker-sm" title="Watchlisted">W</span>{:else if project.user.coolBuilder}<span class="marker marker-cool marker-sm" title="Cool builder">★</span>{/if}
+											{#if projectHours[project.id] != null}<span class="ht-hours" title="Hackatime hours logged">{projectHours[project.id]}h</span>{/if}
 											<span class="badge badge-{project.status} badge-sm">{project.status}</span>
 										</span>
 									</button>
@@ -2373,6 +2527,18 @@
 											{#if selectedProject.status === 'unreviewed'}
 												<a href="https://hack-club-hq.gitbook.io/ysws-project-submission-guidelines/BLBRN8LIfoCZhFV6oMNR" target="_blank" rel="noopener" class="ht-btn ht-btn-docs">Open Docs</a>
 											{/if}
+											{#if isSuperAdmin && auditSvcUrl}
+												<button
+													type="button"
+													class="ht-btn ht-btn-audit"
+													onclick={() =>
+														showAuditEmbed && auditEmbedProjectId === selectedProject.id
+															? closeAuditEmbed()
+															: openAuditEmbed()}
+												>
+													{showAuditEmbed && auditEmbedProjectId === selectedProject.id ? 'Hide audit' : 'View in audit'}
+												</button>
+											{/if}
 										</div>
 									</div>
 
@@ -2396,6 +2562,28 @@
 										</div>
 									{/if}
 								</div>
+
+								{#if isSuperAdmin && showAuditEmbed && auditEmbedProjectId === selectedProject.id}
+									<section class="audit-embed">
+										<div class="audit-embed-head">
+											<span>Hackatime heartbeats &amp; anomaly signals</span>
+											<button type="button" class="audit-embed-close" onclick={closeAuditEmbed}>Close</button>
+										</div>
+										{#if auditEmbedError}
+											<div class="audit-embed-error">audit panel failed to load: {auditEmbedError}</div>
+										{:else}
+											<iframe
+												bind:this={auditFrameEl}
+												name={AUDIT_FRAME_NAME}
+												title="Heartbeat activity &amp; anomaly analysis"
+												class="audit-embed-frame"
+												style:height={`${auditEmbedHeight}px`}
+												sandbox="allow-scripts allow-same-origin"
+												referrerpolicy="no-referrer"
+											></iframe>
+										{/if}
+									</section>
+								{/if}
 
 								{#if selectedProject.hackatimeProjectName?.length > 0}
 									<div class="proj-info-row">
@@ -3804,6 +3992,69 @@
 		background: #fff;
 		color: #111;
 		border: 2px solid #ddd;
+	}
+
+	.ht-btn-audit {
+		background: #b5562a;
+		color: #fff;
+		border: 2px solid #db7a4a;
+	}
+
+	.ht-hours {
+		display: inline-flex;
+		align-items: center;
+		padding: 0 0.35rem;
+		border-radius: 4px;
+		font-size: 0.7rem;
+		font-weight: 700;
+		background: rgba(219, 122, 74, 0.18);
+		color: #db7a4a;
+	}
+
+	.audit-embed {
+		margin-top: 1rem;
+		border: 1px solid #3a3a3a;
+		border-radius: 8px;
+		overflow: hidden;
+	}
+
+	.audit-embed-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0.5rem 0.75rem;
+		font-size: 0.8rem;
+		font-weight: 600;
+		background: rgba(181, 86, 42, 0.12);
+		color: #db7a4a;
+	}
+
+	.audit-embed-close {
+		padding: 0.25rem 0.75rem;
+		border-radius: 5px;
+		border: 1px solid #555;
+		background: transparent;
+		color: inherit;
+		font-family: inherit;
+		font-size: 0.75rem;
+		cursor: pointer;
+	}
+
+	.audit-embed-close:hover {
+		background: rgba(255, 255, 255, 0.08);
+	}
+
+	.audit-embed-error {
+		padding: 0.75rem;
+		font-size: 0.8rem;
+		color: #e06c6c;
+	}
+
+	.audit-embed-frame {
+		display: block;
+		width: 100%;
+		border: 0;
+		background: #fff;
 	}
 
 	.user-feedback-box {

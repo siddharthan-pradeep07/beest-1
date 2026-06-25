@@ -238,6 +238,12 @@ export class AdminController {
   }
 
   @UseGuards(ReviewerGuard)
+  @Get('projects/hours')
+  listProjectHours() {
+    return this.adminService.getUnreviewedProjectHours();
+  }
+
+  @UseGuards(ReviewerGuard)
   @Get('projects/:id/hackatime')
   getProjectHackatime(
     @Param('id', ParseUUIDPipe) id: string,
