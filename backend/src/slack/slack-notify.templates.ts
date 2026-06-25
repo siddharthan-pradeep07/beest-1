@@ -129,6 +129,12 @@ export function reviewChangesNeededDm(input: ReviewDmInput): DmMessage {
 // Permanent ("hard") rejection of a single project. Unlike changes_needed, the
 // builder cannot resubmit THIS project — but they're free to ship other ones.
 export function reviewRejectedDm(input: ReviewDmInput): DmMessage {
+  const intro =
+    `Hey - unfortunately your project *${input.projectName}* has been rejected by Beest. ` +
+    `You're free to ship it to other Hack Club programs, or you can dispute this in the help channel. ` +
+    `Currently you cannot resubmit this project as it doesn't meet our standards for submission` +
+    (input.feedback ? ', the reason provided is as follows:' : '.');
+
   const blocks: Record<string, unknown>[] = [
     {
       type: 'header',
@@ -140,33 +146,19 @@ export function reviewRejectedDm(input: ReviewDmInput): DmMessage {
     },
     {
       type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `${reviewerLabel(input.reviewerName)} reviewed your project *${input.projectName}* and rejected it. This project can't be resubmitted.`,
-      },
+      text: { type: 'mrkdwn', text: intro },
     },
   ];
 
   if (input.feedback) {
+    // Prefix every line so multi-line feedback stays inside the block quote.
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: `*Reason:* ${input.feedback}` },
+      text: { type: 'mrkdwn', text: `>${input.feedback.replace(/\n/g, '\n>')}` },
     });
   }
 
-  blocks.push(
-    { type: 'divider' },
-    {
-      type: 'context',
-      elements: [
-        {
-          type: 'mrkdwn',
-          text: "This decision is final for this project, but you can still build and ship other projects. :beest:",
-        },
-      ],
-    },
-    ...viewProjectButton(input.projectLink),
-  );
+  blocks.push(...viewProjectButton(input.projectLink));
 
   return { text: `Your project ${input.projectName} was rejected`, blocks };
 }
